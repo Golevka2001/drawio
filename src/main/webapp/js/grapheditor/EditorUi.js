@@ -521,7 +521,19 @@ EditorUi = function(editor, container, lightbox)
 			}
 			else if (!mxEvent.isConsumed(evt) && evt.keyCode == 27 /* Escape */)
 			{
-				this.hideDialog(null, true);
+				// Closes closable tooltips (eg. template preview) before dialogs
+				if (this.sidebar != null && this.sidebar.tooltip != null &&
+					this.sidebar.tooltip.style.display != 'none' &&
+					this.sidebar.tooltipCloseImage != null &&
+					this.sidebar.tooltipCloseImage.style.display != 'none')
+				{
+					this.sidebar.hideTooltip();
+					mxEvent.consume(evt);
+				}
+				else
+				{
+					this.hideDialog(null, true);
+				}
 			}
 		});
 	   	
@@ -1234,6 +1246,8 @@ EditorUi.prototype.init = function()
 		}
 		
 		// Hides tooltips and connection points when scrolling
+		var pageBreaksUpdate = null;
+
 		mxEvent.addListener(graph.container, 'scroll', mxUtils.bind(this, function()
 		{
 			graph.tooltipHandler.hide();
@@ -1241,6 +1255,25 @@ EditorUi.prototype.init = function()
 			if (graph.connectionHandler != null && graph.connectionHandler.constraintHandler != null)
 			{
 				graph.connectionHandler.constraintHandler.reset();
+			}
+
+			// Redraws the clipped page breaks if the visible area is no
+			// longer within the area covered by the last update
+			if (graph.pageBreakCoverage != null && pageBreaksUpdate == null)
+			{
+				var b = graph.pageBreakCoverage;
+				var c = graph.container;
+
+				if (c.scrollLeft < b.x || c.scrollTop < b.y ||
+					c.scrollLeft + c.clientWidth > b.x + b.width ||
+					c.scrollTop + c.clientHeight > b.y + b.height)
+				{
+					pageBreaksUpdate = window.requestAnimationFrame(function()
+					{
+						pageBreaksUpdate = null;
+						graph.updatePageBreaks(graph.pageBreaksVisible, 0, 0);
+					});
+				}
 			}
 		}));
 		
@@ -1720,6 +1753,18 @@ EditorUi.prototype.removeUserDefinedDarkColors = function(cells, includeLabels, 
 	var graph = this.editor.graph;
 	cells = (cells != null) ? cells : graph.getSelectionCells();
 	var keys = Graph.colorStyles;
+
+	// Label colors in styles follow the labels option like
+	// the colors in HTML labels below
+	if (!includeLabels)
+	{
+		keys = keys.filter(function(key)
+		{
+			return key != mxConstants.STYLE_FONTCOLOR &&
+				key != mxConstants.STYLE_LABEL_BORDERCOLOR &&
+				key != mxConstants.STYLE_LABEL_BACKGROUNDCOLOR;
+		});
+	}
 
 	// Element for parsing HTML labels and implementing dark mode colors
 	var tempDiv = document.createElement('div');
@@ -2737,15 +2782,15 @@ EditorUi.prototype.getCellsForShapePicker = function(cell, hovering, showEdges)
 	}
 
 	var cells = [cell, createVertex('whiteSpace=wrap;html=1;'),
-		createVertex('ellipse;whiteSpace=wrap;html=1;', 80, 80),
-		createVertex('rhombus;whiteSpace=wrap;html=1;', 80, 80),
+		createVertex('ellipse;whiteSpace=wrap;html=1;shapeInside=1;', 80, 80),
+		createVertex('rhombus;whiteSpace=wrap;html=1;shapeInside=1;', 80, 80),
 		createVertex('rounded=1;whiteSpace=wrap;html=1;'),
-		createVertex('shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;fixedSize=1;'),
-		createVertex('shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;fixedSize=1;', 120, 60),
-		createVertex('shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;fixedSize=1;', 120, 80),
-		createVertex('shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;fixedSize=1;', 120, 80),
+		createVertex('shape=parallelogram;perimeter=parallelogramPerimeter;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;'),
+		createVertex('shape=trapezoid;perimeter=trapezoidPerimeter;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;', 120, 60),
+		createVertex('shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;', 120, 80),
+		createVertex('shape=step;perimeter=stepPerimeter;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;', 120, 80),
 		createVertex('shape=process;whiteSpace=wrap;html=1;backgroundOutline=1;'),
-		createVertex('triangle;whiteSpace=wrap;html=1;', 60, 80),
+		createVertex('triangle;whiteSpace=wrap;html=1;shapeInside=1;', 60, 80),
 		createVertex('shape=document;whiteSpace=wrap;html=1;boundedLbl=1;', 120, 80),
 		createVertex('shape=tape;whiteSpace=wrap;html=1;', 120, 100),
 		createVertex('ellipse;shape=cloud;whiteSpace=wrap;html=1;', 120, 80),
@@ -5960,6 +6005,7 @@ EditorUi.prototype.updateActionStates = function()
 	this.actions.get('editLink').setEnabled(ss.cells.length == 1);
 	this.actions.get('editStyle').setEnabled(ss.cells.length > 0);
 	this.actions.get('editTooltip').setEnabled(ss.cells.length == 1);
+	this.actions.get('editNote').setEnabled(ss.cells.length == 1);
 	this.actions.get('openLink').setEnabled(ss.cells.length == 1 &&
 		graph.getLinkForCell(ss.cells[0]) != null);
 	this.actions.get('guides').setEnabled(graph.isEnabled());
@@ -7284,6 +7330,7 @@ EditorUi.prototype.altShiftActions = {
   79: 'connectionPoints', // Alt+Shift+O
   81: 'editConnectionPoints', // Alt+Shift+Q
   84: 'editTooltip', // Alt+Shift+T
+  78: 'editNote', // Alt+Shift+N
   86: 'pasteSize', // Alt+Shift+V
   70: 'copySize', // Alt+Shift+F
   66: 'copyData', // Alt+Shift+B
