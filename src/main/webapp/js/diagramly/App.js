@@ -794,7 +794,7 @@ App.main = function(callback, createUi)
 		if (mxIsElectron && typeof electron === 'undefined')
 		{
 			alert('Runtime Environment not found.');
-			document.body.innerHTML = '<div style="margin-top:10%;text-align:center;">' +
+			document.body.innerHTML = '<div style="grid-column:1 / -1;grid-row:1 / -1;margin-top:10%;text-align:center;">' +
 				'<img src="mxgraph/images/warning.png" align="top" style="padding-right:6px;"/>' +
 				'Runtime Environment not found.</div>';
 			
@@ -847,7 +847,7 @@ App.main = function(callback, createUi)
 			'ac.draw.io' === window.location.hostname ||
 			'aj.draw.io' === window.location.hostname))
 		{
-			document.body.innerHTML = '<div style="margin-top:10%;text-align:center;">Stand-alone mode not allowed for this domain.</div>';
+			document.body.innerHTML = '<div style="grid-column:1 / -1;grid-row:1 / -1;margin-top:10%;text-align:center;">Stand-alone mode not allowed for this domain.</div>';
 			
 			return;
 		}
@@ -2048,27 +2048,9 @@ App.prototype.init = function()
 			}));
 		}
 		
-		if (!mxClient.IS_CHROMEAPP && !EditorUi.isElectronApp && DrawioFile.SYNC == 'auto' &&
-			urlParams['local'] != '1' && urlParams['stealth'] != '1' && !this.isOffline() &&
-			Editor.enableRealtimeCache && (!this.editor.chromeless || this.editor.editable))
-		{
-			// Checks if the cache is alive
-			var timeoutThread = window.setTimeout(mxUtils.bind(this, function()
-			{
-				// Switches to sync via sockets if cache is not reachable
-				Editor.enableRealtimeCache = false;
-			}), Editor.cacheTimeout);
-			
-			mxUtils.get(EditorUi.cacheUrl + '?alive', mxUtils.bind(this, function(req)
-			{
-				Editor.enableRealtimeCache = req.getStatus() >= 200 && req.getStatus() <= 299;
-				window.clearTimeout(timeoutThread);
-			}), function()
-			{
-				Editor.enableRealtimeCache = false;
-				window.clearTimeout(timeoutThread);
-			});
-		}
+		// Checks if the cache is alive (also runs when the first file
+		// starts to sync, eg. in embed mode, see DrawioFileSync.start)
+		DrawioFileSync.checkCacheAlive(this);
 	}
 
 	this.updateHeader();
@@ -6576,8 +6558,14 @@ App.prototype.loadLibraries = function(libs, done)
 			{
 				if (libs != null)
 				{
-					for (var i = libs.length - 1; i >= 0; i--)
+					// Entries are prepended in the sidebar so they must be
+					// loaded in reverse, or in-order if they are appended
+					var append = this.sidebar.appendCustomLibraries;
+
+					for (var j = 0; j < libs.length; j++)
 					{
+						var i = (append) ? j : libs.length - 1 - j;
+
 						if (files[i] != null)
 						{
 							try

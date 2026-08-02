@@ -255,32 +255,14 @@ mxStencilRegistry.allowEval = false;
 							pluginUrl = './' + pluginUrl;
 						}
 
-						// External plugins in App Data folder (Needs enabling plugins)
+						// Only built-in plugins shipped with the app are supported;
+						// settings entries for the removed external plugins are skipped
 						if (!pluginUrl.startsWith('./plugins/'))
 						{
-							let pluginFile = await requestSync({
-								action: 'getPluginFile',
-								plugin: plugins[i]
-							});
-
-							if (pluginFile != null)
-							{
-								pluginUrl = 'file://' + pluginFile;
-							}
-							else
-							{
-								continue; //skip not found files
-							}
+							continue;
 						}
 
-						try
-						{
-							mxscript(pluginUrl);
-						}
-						catch (e)
-						{
-							// ignore
-						}
+						mxscript(pluginUrl);
 					}
 					catch (e)
 					{
@@ -830,7 +812,7 @@ mxStencilRegistry.allowEval = false;
 				}
 			}
 
-			editorUi.showDialog(new PluginsDialog(editorUi, async function(callback)
+			editorUi.showDialog(new PluginsDialog(editorUi, function(callback)
 			{
 				var div = document.createElement('div');
 				
@@ -855,78 +837,6 @@ mxStencilRegistry.allowEval = false;
 				}
 				
 				div.appendChild(pluginsSelect);
-				mxUtils.br(div);
-				mxUtils.br(div);
-				
-				title = document.createElement('span');
-				mxUtils.write(title, mxResources.get('extPlugins') + ': ');
-				div.appendChild(title);
-				
-				if (await requestSync('isPluginsEnabled'))
-				{
-					var extPluginsBtn = mxUtils.button(mxResources.get('selectFile') + '...', async function()
-					{
-						var warningMsgs = mxResources.get('pluginWarning').split('\\n');
-						var warningMsg = warningMsgs.pop(); //Last line in the message
-
-						if (!warningMsg) 
-						{
-							warningMsg = warningMsgs.pop();
-						}
-
-						if (!confirm(warningMsg)) 
-						{
-							return;
-						}
-						
-						var lastDir = localStorage.getItem('.lastPluginDir');
-						
-						var paths = await requestSync({
-							action: 'showOpenDialog',
-							defaultPath: lastDir || (await requestSync('getDocumentsFolder')),
-							filters: [
-								{ name: 'draw.io Plugins', extensions: ['js'] },
-								{ name: 'All Files', extensions: ['*'] }
-							],
-							properties: ['openFile']
-						});
-							
-						if (paths !== undefined && paths[0] != null)
-						{
-							try
-							{
-								let ret = await requestSync({
-									action: 'installPlugin',
-									filePath: paths[0]
-								});
-
-								localStorage.setItem('.lastPluginDir', ret.selDir);
-								callback(ret.pluginName);
-								editorUi.hideDialog();
-							}
-							catch (e)
-							{
-								if (e.message == 'fileExists')
-								{
-									alert(mxResources.get('fileExists'));
-								}
-								else
-								{
-									alert('Adding plugin failed.');
-								}
-							}
-						}
-					});
-					
-					extPluginsBtn.className = 'geBtn';
-					div.appendChild(extPluginsBtn);
-				}
-				else
-				{
-					title = document.createElement('span');
-					mxUtils.write(title, mxResources.get('pluginsDisabled'));
-					div.appendChild(title);
-				}
 							
 				var dlg = new CustomDialog(editorUi, div, mxUtils.bind(this, function()
 				{
@@ -936,14 +846,9 @@ mxStencilRegistry.allowEval = false;
 				}));
 				editorUi.showDialog(dlg.container, 300, 125, true, true);
 			},
-			async function(plugin)
+			function(plugin)
 			{
 				delete pluginsMap[plugin];
-				
-				await requestSync({
-					action: 'uninstallPlugin',
-					plugin: plugin
-				});
 			}, true).container, 380, null, true, false);
 		});
 
@@ -1957,10 +1862,12 @@ mxStencilRegistry.allowEval = false;
 	
 				if (this.isPdfFile())
 				{
+					var p = this.ui.getPdfFileProperties(this.ui.fileNode);
+
 					this.ui.getEmbeddedPdf(function(data)
 					{
 						doSave(data, 'binary');
-					}, error);
+					}, error, p.notes);
 				}
 				else if (!/(\.png)$/i.test(this.fileObject.name))
 				{
@@ -2529,11 +2436,13 @@ mxStencilRegistry.allowEval = false;
 	};
 
 	// Renders all pages to PDF with the diagram XML embedded via the local
-	// export pipeline, mirroring getEmbeddedPng for PNG files
-	EditorUi.prototype.getEmbeddedPdf = function(success, error)
+	// export pipeline, mirroring getEmbeddedPng for PNG files. The optional
+	// icons argument adds notes as sticky note annotations.
+	EditorUi.prototype.getEmbeddedPdf = function(success, error, icons)
 	{
 		var req = this.createDownloadRequest(null, 'pdf', true, '0',
-			null, false, null, null, false, true);
+			null, false, null, null, false, true, null, null, null,
+			null, null, null, null, null, null, icons);
 
 		req.send(function()
 		{
@@ -2743,10 +2652,18 @@ mxStencilRegistry.allowEval = false;
 	{
 		this.readGraphFile(mxUtils.bind(this, function(fileEntry, data, stat)
 		{
-			var library = new DesktopLibrary(this, data, fileEntry);
-			this.loadLibrary(library);
-			this.showSidebar();
-			success(library);
+			try
+			{
+				// Must not load the library here: the caller (App.loadLibraries)
+				// waits for all libraries and loads them in the stored order,
+				// an immediate load here would insert them in the random order
+				// in which the file reads complete
+				success(new DesktopLibrary(this, data, fileEntry));
+			}
+			catch (e)
+			{
+				error(e);
+			}
 		}), error, libPath);
 	};
 
