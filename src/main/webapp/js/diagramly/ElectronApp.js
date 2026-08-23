@@ -409,7 +409,15 @@ mxStencilRegistry.allowEval = false;
 			// KNOWN: Event with gesture handler mouseUp the middle click opens a framed window
 			mxEvent.addListener(a, 'click', mxUtils.bind(this, function(evt)
 			{
-				this.openLink(a.getAttribute('href'), a.getAttribute('target'));
+				// The href is not written for links that did not pass the check
+				// in createLinkForHint, in which case there is nothing to open
+				var url = a.getAttribute('href');
+
+				if (url != null)
+				{
+					this.openLink(url, a.getAttribute('target'));
+				}
+
 				mxEvent.consume(evt);
 			}));
 		}
@@ -541,7 +549,7 @@ mxStencilRegistry.allowEval = false;
 										graph.setSelectionCells(editorUi.importXml(xml));
 									});
 								}
-								else if (editorUi.isRemoteFileFormat(data, path))
+								else if (editorUi.isGliffyData(data, path))
 								{
 									editorUi.spinner.stop();
 									editorUi.showError(mxResources.get('error'), mxResources.get('notInDesktop'));
@@ -1017,6 +1025,13 @@ mxStencilRegistry.allowEval = false;
 	// Monitor the given file for changes
 	EditorUi.prototype.watchFile = async function(file)
 	{
+		// Saving a non-current file (eg. a library) must not unwatch
+		// the current file's path
+		if (file != null && file != this.getCurrentFile())
+		{
+			return;
+		}
+
 		var newPath = (file != null && file.fileObject != null &&
 			file == this.getCurrentFile()) ? file.fileObject.path : null;
 		
@@ -2055,6 +2070,13 @@ mxStencilRegistry.allowEval = false;
 	// (title, revision, ...), which hits the signature safeguard in the
 	// desktop saveFile above, so the desktop saveAs is used instead
 	LocalLibrary.prototype.saveAs = LocalFile.prototype.saveAs;
+
+	// LocalLibrary extends the pre-wrapper LocalFile, so without these it
+	// inherits the web save/saveFile: the web save calls saveAs, and the
+	// desktop saveAs above ends with save, which reopens the save dialog
+	// forever without ever writing the file [drawio-desktop#2518]
+	LocalLibrary.prototype.save = LocalFile.prototype.save;
+	LocalLibrary.prototype.saveFile = LocalFile.prototype.saveFile;
 
 	LocalFile.prototype.saveDraft = function(data)
 	{
