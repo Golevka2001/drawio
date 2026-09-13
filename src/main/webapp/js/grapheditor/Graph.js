@@ -6645,6 +6645,36 @@ Graph.prototype.editAfterInsert = false;
 Graph.prototype.builtInProperties = ['label', 'tooltip', 'placeholders', 'placeholder', 'note'];
 
 /**
+ * Defines the property name prefixes to be ignored in tooltips. The PlantUML
+ * and Mermaid converters stamp round-trip identity onto every generated cell
+ * (plantUmlId / plantUmlBaseStyle / plantUmlBaseValue and the mermaid
+ * equivalents, plus plantUmlData / mermaidData on the wrapper group). Those
+ * attributes must stay in the model - EditorUi.replaceLockedGroupChildren and
+ * mergeMermaidStyleDelta re-parse them - but they are internal bookkeeping,
+ * so hovering a shape of an inserted diagram must not dump them as a tooltip.
+ * Matched by prefix so attributes added by a later bundle stay hidden too.
+ */
+Graph.prototype.builtInPropertyPrefixes = ['plantUml', 'mermaid'];
+
+/**
+ * Returns true if the given property name starts with one of the prefixes in
+ * builtInPropertyPrefixes and is therefore ignored in tooltips.
+ */
+Graph.prototype.isBuiltInPropertyPrefix = function(name)
+{
+	for (var i = 0; i < this.builtInPropertyPrefixes.length; i++)
+	{
+		if (name.substring(0, this.builtInPropertyPrefixes[i].length) ==
+			this.builtInPropertyPrefixes[i])
+		{
+			return true;
+		}
+	}
+
+	return false;
+};
+
+/**
  * Specifies if icons should be shown on cells with a note. Default is
  * true (the icon is the affordance for reading the note).
  */
@@ -12044,6 +12074,26 @@ Graph.prototype.connectVertex = function(source, direction, length, evt, forceCl
 		}
 	}
 
+	// Uses the parent of the composite as the container if no target or
+	// other container was found at the end point so that cells inserted in
+	// the direction of the flow stay in the parent and extend it instead of
+	// falling out into the default parent. The end point is relative to the
+	// parent of the composite, which is also the cell that gets cloned.
+	// Parents are only ever extended to the right and bottom so end points
+	// above or left of the parent origin are not handled here.
+	// [jgraph/drawio#3693]
+	if (container == null && target == null && !cloneSource &&
+		pt.x >= 0 && pt.y >= 0)
+	{
+		var sourceParent = this.model.getParent(composite);
+
+		if (sourceParent != null && this.model.isVertex(sourceParent) &&
+			this.isContainer(sourceParent) && !this.isCellLocked(sourceParent))
+		{
+			container = sourceParent;
+		}
+	}
+
 	var duplicate = (!mxEvent.isShiftDown(evt) || mxEvent.isControlDown(evt)) || forceClone;
 	
 	if (duplicate && (urlParams['sketch'] != '1' || forceClone))
@@ -13861,7 +13911,8 @@ Graph.prototype.getTooltipForCell = function(cell)
 
 		if (tip == null)
 		{
-			var ignored = this.builtInProperties;
+			// Copies the shared list as the link handling below appends to it
+			var ignored = this.builtInProperties.slice();
 			var attrs = cell.value.attributes;
 			var temp = [];
 			tip = '';
@@ -13876,7 +13927,8 @@ Graph.prototype.getTooltipForCell = function(cell)
 			for (var i = 0; i < attrs.length; i++)
 			{
 				if (((Graph.translateDiagram && attrs[i].nodeName == 'label') ||
-					mxUtils.indexOf(ignored, attrs[i].nodeName) < 0) &&
+					(mxUtils.indexOf(ignored, attrs[i].nodeName) < 0 &&
+					!this.isBuiltInPropertyPrefix(attrs[i].nodeName))) &&
 					attrs[i].nodeValue.length > 0)
 				{
 					temp.push({name: attrs[i].nodeName, value: attrs[i].nodeValue});
@@ -17867,7 +17919,11 @@ if (typeof mxVertexHandler !== 'undefined')
 		};
 		
 		/**
-		 * Overridden to add expand style.
+		 * Overridden to add expand style. A transparentBounds parent is never
+		 * extended: its stored geometry stays pinned at (0,0,0,0) and the visible
+		 * box is derived from the children, so mxGraph.extendParent (reached from
+		 * cellsAdded, cellsResized and cellsFolded) would only persist a stale
+		 * child.x + width + padding size into the file.
 		 */
 		var graphIsExtendParent = Graph.prototype.isExtendParent;
 		Graph.prototype.isExtendParent = function(cell)
@@ -17876,6 +17932,11 @@ if (typeof mxVertexHandler !== 'undefined')
 
 			if (parent != null)
 			{
+				if (this.isTransparentBounds(parent))
+				{
+					return false;
+				}
+
 				var style = this.getCurrentCellStyle(parent);
 
 				if (style['expand'] != null)
@@ -17889,7 +17950,8 @@ if (typeof mxVertexHandler !== 'undefined')
 		};
 
 		/**
-		 * Overridden to add contract style.
+		 * Overridden to add contract style. A transparentBounds parent is never
+		 * contracted, see isExtendParent.
 		 */
 		var graphIsContractParent = Graph.prototype.isContractParent;
 		Graph.prototype.isContractParent = function(cell)
@@ -17898,6 +17960,11 @@ if (typeof mxVertexHandler !== 'undefined')
 
 			if (parent != null)
 			{
+				if (this.isTransparentBounds(parent))
+				{
+					return false;
+				}
+
 				var style = this.getCurrentCellStyle(parent);
 
 				if (style['contract'] != null)
