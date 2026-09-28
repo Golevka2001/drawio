@@ -901,7 +901,8 @@ EditorUi = function(editor, container, lightbox)
 				graph.copyCellStyles(evt.getProperty('cells'),
 					evt.getProperty('keys'), evt.getProperty('values'),
 					graph.currentVertexStyle, graph.currentEdgeStyle,
-					vertexStyleIgnored, edgeStyleIgnored, evt.getProperty('edgeLabel'));
+					vertexStyleIgnored, edgeStyleIgnored, evt.getProperty('edgeLabel'),
+					force);
 			}
 
 			if (this.toolbar != null)
@@ -1489,7 +1490,8 @@ EditorUi.prototype.findCommonProperties = function(cell, properties, addAll, sst
 					{
 						var name = nodes[i].getAttribute('color');
 
-						if (!mxUtils.isValidColor(name) && !handledKeys[name] &&
+						// A node without a color attribute defines no custom property
+						if (name != null && !mxUtils.isValidColor(name) && !handledKeys[name] &&
 							name != 'fill' && name != 'stroke' && name != 'font')
 						{
 							handledKeys[name] = true;
@@ -2486,7 +2488,9 @@ EditorUi.prototype.createShapePicker = function(x, y, source, callback, directio
 			graph.snap(Math.round(y / graph.view.scale) - graph.view.translate.y - h));
 	};
 	
-	if (cells != null && cells.length > 0)
+	// The entries are styled and rendered with the sidebar's scratch graph,
+	// so a chromeless editor without a sidebar has no shape picker
+	if (cells != null && cells.length > 0 && this.sidebar != null)
 	{
 		var ui = this;
 		var graph = this.editor.graph;
@@ -3513,6 +3517,10 @@ EditorUi.prototype.getImageForEdgeStyle = function(style)
 	{
 		result = Format.entityImage.src;
 	}
+	else if (es == 'sequenceEdgeStyle')
+	{
+		result = Format.sequenceImage.src;
+	}
 	else if (es == 'elbowEdgeStyle')
 	{
 		result = (mxUtils.getValue(style, mxConstants.STYLE_ELBOW, null) == 'vertical') ?
@@ -3929,7 +3937,8 @@ EditorUi.prototype.initCanvas = function()
 			{
 				var backUrl = Graph.sanitizeLink(toolbarConfig.backBtn.url);
 
-				if (backUrl != null)
+				// Same-origin only as the URL comes from a URL parameter
+				if (backUrl != null && Graph.isSameOrigin(backUrl))
 				{
 					addButton(mxUtils.bind(this, function(evt)
 					{
@@ -4211,6 +4220,12 @@ EditorUi.prototype.initCanvas = function()
 			{
 				var refreshUrl = (toolbarConfig.refreshBtn.url == null) ? null :
 					Graph.sanitizeLink(toolbarConfig.refreshBtn.url);
+
+				// Same-origin only as the URL comes from a URL parameter
+				if (refreshUrl != null && !Graph.isSameOrigin(refreshUrl))
+				{
+					refreshUrl = null;
+				}
 
 				addButton(mxUtils.bind(this, function(evt)
 				{
@@ -6076,7 +6091,9 @@ EditorUi.prototype.updateActionStates = function()
 		graph.isValidRoot(ss.cells[0]));
 	this.actions.get('copyData').setEnabled(ss.cells.length == 1);
 	this.actions.get('copyAsText').setEnabled(ss.cells.length == 1);
-	this.actions.get('editLink').setEnabled(ss.cells.length == 1);
+	// Edit Link writes to every editable cell in the selection, like
+	// Edit Style — same URL or custom action on a group of shapes.
+	this.actions.get('editLink').setEnabled(ss.cells.length > 0);
 	this.actions.get('editStyle').setEnabled(ss.cells.length > 0);
 	this.actions.get('editTooltip').setEnabled(ss.cells.length == 1);
 	this.actions.get('editNote').setEnabled(ss.cells.length == 1);
