@@ -306,6 +306,68 @@ mxText.prototype.paint = function(c, update)
  */
 mxText.prototype.redraw = function()
 {
+	this.invalidateBoundingBox();
+
+	var screen = this.beginModelUnits();
+
+	try
+	{
+		this.redrawText();
+	}
+	finally
+	{
+		this.endModelUnits(screen);
+	}
+
+	this.backgroundNodes = null;
+
+	if (screen != null && this.node != null)
+	{
+		var rects = this.node.getElementsByTagName('rect');
+
+		for (var i = 0; i < rects.length; i++)
+		{
+			if (rects[i].textBackground != null)
+			{
+				this.backgroundNodes = this.backgroundNodes || [];
+				this.backgroundNodes.push(rects[i]);
+			}
+		}
+
+		this.updateTextBackground();
+	}
+};
+
+/**
+ * Function: updateTextBackground
+ *
+ * Applies the pixels of the view to the backgrounds of plain text labels
+ * if the text is painted in model units, so that their padding and border
+ * stay in screen pixels for any scale or translate (see
+ * <mxSvgCanvas2D.updateTextBackground>).
+ */
+mxText.prototype.updateTextBackground = function()
+{
+	if (this.backgroundNodes != null && this.state != null)
+	{
+		var s = this.state.view.scale;
+		var tr = this.state.view.translate;
+
+		for (var i = 0; i < this.backgroundNodes.length; i++)
+		{
+			mxSvgCanvas2D.updateTextBackground(this.backgroundNodes[i],
+				1 / s, tr.x, tr.y);
+		}
+	}
+};
+
+/**
+ * Function: redrawText
+ *
+ * Updates the DOM nodes of the text for the current bounds and scale.
+ */
+mxText.prototype.redrawText = function()
+{
 	// Forces full repaint when SVG word wrapping is active and width changes
 	if (this.wrap && this.convertToSvg && this.style != null &&
 		this.style['svgWhiteSpace'] == 'wrap' && this.bounds != null)
@@ -538,7 +600,8 @@ mxText.prototype.updateBoundingBox = function()
 					}
 					else
 					{
-						this.boundingBox = new mxRectangle(b.x, b.y, b.width, b.height);
+						this.boundingBox = this.getScreenRectangle(
+							new mxRectangle(b.x, b.y, b.width, b.height));
 					}
 					
 					return;

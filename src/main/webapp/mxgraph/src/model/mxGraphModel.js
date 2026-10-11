@@ -461,11 +461,12 @@ mxGraphModel.prototype.getDescendants = function(parent)
  * filter - JavaScript function that takes an <mxCell> as an argument
  * and returns a boolean.
  * parent - Optional <mxCell> that is used as the root of the recursion.
+ * result - Optional array to add the cells to.
  */
-mxGraphModel.prototype.filterDescendants = function(filter, parent)
+mxGraphModel.prototype.filterDescendants = function(filter, parent, result)
 {
 	// Creates a new array for storing the result
-	var result = [];
+	result = (result != null) ? result : [];
 
 	// Recursion starts at the root of the model
 	parent = parent || this.getRoot();
@@ -477,13 +478,13 @@ mxGraphModel.prototype.filterDescendants = function(filter, parent)
 		result.push(parent);
 	}
 	
-	// Visits the children of the cell
+	// Visits the children of the cell and adds them to the same
+	// array, which avoids copying the result for each child
 	var childCount = this.getChildCount(parent);
 	
 	for (var i = 0; i < childCount; i++)
 	{
-		var child = this.getChildAt(parent, i);
-		result = result.concat(this.filterDescendants(filter, child));
+		this.filterDescendants(filter, this.getChildAt(parent, i), result);
 	}
 
 	return result;
@@ -739,8 +740,10 @@ mxGraphModel.prototype.cellAdded = function(cell)
 			}
 		}
 		
-		// Makes sure IDs of deleted cells are not reused
-		if (mxUtils.isNumeric(cell.getId()))
+		// Makes sure IDs of deleted cells are not reused. Ignores IDs from 2^52:
+		// createId can never count up to them, and from 2^53 nextId++ no longer
+		// changes nextId so that the loop above would never find a free ID.
+		if (mxUtils.isNumeric(cell.getId()) && cell.getId() < 4503599627370496)
 		{
 			this.nextId = Math.max(this.nextId, cell.getId());
 		}

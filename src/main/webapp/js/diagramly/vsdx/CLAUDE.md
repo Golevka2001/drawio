@@ -31,7 +31,7 @@ CLAUDE.md); snapshot changes are committed in drawio-visio-test.
 
 | Where | Role |
 |-------|------|
-| `EditorUi.importVisio` / `doImportVisio` (`../EditorUi.js`) | App entry points. Binary `.vsd`/`.vss`/`.vst` files are first converted to Visio XML in the browser (`convertBinaryVisio`, `js/vsd/drawio-vsd.min.js`); `.vdx` and files the converter cannot read go to `VSS_CONVERT_URL`. |
+| `EditorUi.importVisio` / `doImportVisio` (`../EditorUi.js`) | App entry points. Binary `.vsd`/`.vss`/`.vst` files are first converted to Visio XML in the browser (`convertBinaryVisio`, `js/vsd/drawio-vsd.min.js`); `.vdx`/`.vsx` (Visio 2003-2010 XML) and files the converter cannot read fail with `unsupportedFormat`. Nothing is sent to a server: the conversion service was retired in Oct 2026. |
 | `../emf/emf-svg.js` | `window.emfToSvg`: EMF → SVG for embedded images (bundled in `extensions.min.js`) |
 | `vsdxImporter.html` + `js/vsdxImporter.js` (webapp root) | Standalone importer page. Nothing in this repo loads it, but drawio-desktop's command-line export does (messages `import` → `import-success` / `import-error`), and so do headless tools that use the hosted page (file input → `#doneDiv`, `window.importResXML`). Keep both contracts. |
 | `connect/vsdx/importer.js` | `convertVSDXtoMX`, a reduced `importVisio` for the Confluence/Jira connector pages; loads `extensions.min.js` on first use |
@@ -314,7 +314,7 @@ Intercepts mxGraph shape rendering calls and converts them to VSDX geometry XML 
 | `quadTo(x1, y1, x2, y2)` | `(number × 4)` | Quadratic Bezier → RelQuadBezTo |
 | `curveTo(x1, y1, x2, y2, x3, y3)` | `(number × 6)` | Cubic Bezier → RelCubBezTo |
 | `close()` | `()` | Close path (implicit LineTo back to start) |
-| `image(x, y, w, h, src, aspect, flipH, flipV)` | `(number × 4, string, boolean × 3)` | Embed image: handles SVG→PNG, BMP→PNG conversion |
+| `image(x, y, w, h, src, aspect, flipH, flipV)` | `(number × 4, string, boolean × 3)` | Embed image: handles SVG→PNG, BMP→PNG conversion. Data URIs may be base64 or URL encoded (UTF-8 SVGs are rendered as `data:image/svg+xml,%3Csvg…`); undecodable data skips the image. The media file type comes from the untrusted MIME type or URL, so it is reduced to `[\w+.-]` (no path separators in zip entries) |
 | `text(x, y, w, h, str, align, valign, wrap, format, overflow, clip, rotation, dir)` | `(number × 4, string, ...)` | Text with HTML parsing → VSDX Paragraph/Character/Text sections |
 | `convertSvg2Png(svgData, w, h, isBase64, callback)` | `(string, number × 2, boolean, Function)` | Renders SVG on canvas, exports PNG |
 | `addForeignData(type, index)` | `(string, number)` | Creates ForeignData element for embedded images |

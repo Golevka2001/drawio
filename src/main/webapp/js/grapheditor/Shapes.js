@@ -261,7 +261,7 @@
 			// Negative transform to avoid save/restore
 			c.rotate(-this.getShapeRotation(), flipH, flipV, x + w / 2, y + h / 2);
 			
-			s = this.scale;
+			var s = this.scale;
 			x = this.bounds.x / s;
 			y = this.bounds.y / s;
 			w = this.bounds.width / s;
@@ -2175,6 +2175,9 @@
 		this.canvas.arcTo = mxUtils.bind(this, HandJiggle.prototype.arcTo);
 	};
 	
+	// Maximum number of segments per line
+	HandJiggle.prototype.maxSegments = 10000;
+
 	HandJiggle.prototype.moveTo = function(endX, endY)
 	{
 		this.originalMoveTo.apply(this.canvas, arguments);
@@ -2234,7 +2237,8 @@
 				return;
 			}
 	
-			var segs = Math.round(dist / 10);
+			// Limits the number of segments for huge sizes
+			var segs = Math.min(Math.round(dist / 10), this.maxSegments);
 			var variation = this.defaultVariation;
 			
 			if (segs < 5)
@@ -2835,7 +2839,7 @@
 	var mxRhombusPaintVertexShape = mxRhombus.prototype.paintVertexShape;
 	mxRhombus.prototype.getLabelBounds = function(rect)
 	{
-		if (this.style['double'] == 1)
+		if (this.style != null && this.style['double'] == 1)
 		{
 			var margin = (Math.max(2, this.strokewidth + 1) * 2 + parseFloat(
 				this.style[mxConstants.STYLE_MARGIN] || 0)) * this.scale;
@@ -2851,9 +2855,10 @@
 		mxRhombusPaintVertexShape.apply(this, arguments);
 
 		// Stash original bounds; double-handling below mutates x, y, w, h.
+		// Indicator shapes of labels have no style.
 		var gx = x, gy = y, gw = w, gh = h;
 
-		if (!this.outline && this.style['double'] == 1)
+		if (!this.outline && this.style != null && this.style['double'] == 1)
 		{
 			var margin = Math.max(2, this.strokewidth + 1) * 2 +
 				parseFloat(this.style[mxConstants.STYLE_MARGIN] || 0);
@@ -3800,11 +3805,12 @@
 			}
 		}
 
-		var sw = (parseFloat(vertex.style[mxConstants.STYLE_STROKEWIDTH] || 1) * vertex.view.scale / 2) - 1;
+		var px = vertex.view.getPixelSize();
+		var sw = (parseFloat(vertex.style[mxConstants.STYLE_STROKEWIDTH] || 1) * vertex.view.scale / 2) - px;
 
 		if (next.x < bounds.getCenterX())
 		{
-			sw += 1;
+			sw += px;
 			sw *= -1;
 		}
 
@@ -3855,7 +3861,8 @@
 		{
 			if (x > terminal.x && x < terminal.x + terminal.width)
 			{
-				x = (side > 0) ? terminal.x + terminal.width + 1 : terminal.x - 1;
+				var px = terminal.view.getPixelSize();
+				x = (side > 0) ? terminal.x + terminal.width + px : terminal.x - px;
 			}
 		};
 
@@ -4053,11 +4060,12 @@
 
 	mxPerimeter.BackbonePerimeter = function (bounds, vertex, next, orthogonal)
 	{
-		var sw = (parseFloat(vertex.style[mxConstants.STYLE_STROKEWIDTH] || 1) * vertex.view.scale / 2) - 1;
+		var px = vertex.view.getPixelSize();
+		var sw = (parseFloat(vertex.style[mxConstants.STYLE_STROKEWIDTH] || 1) * vertex.view.scale / 2) - px;
 		
 		if (vertex.style['backboneSize'] != null)
 		{
-			sw += (parseFloat(vertex.style['backboneSize']) * vertex.view.scale / 2) - 1;
+			sw += (parseFloat(vertex.style['backboneSize']) * vertex.view.scale / 2) - px;
 		}
 		
 		if (vertex.style[mxConstants.STYLE_DIRECTION] == 'south' ||
@@ -4065,7 +4073,7 @@
 		{
 			if (next.x < bounds.getCenterX())
 			{
-				sw += 1;
+				sw += px;
 				sw *= -1;
 			}
 			
@@ -4076,7 +4084,7 @@
 		{
 			if (next.y < bounds.getCenterY())
 			{
-				sw += 1;
+				sw += px;
 				sw *= -1;
 			}
 			
@@ -7144,6 +7152,7 @@
 		}
 
 		var s = this.scale;
+		var tr = (this.state != null) ? this.state.view.translate : new mxPoint();
 		var total = this.centerLength;
 		var a = Math.min(total / 4, 24 / s);
 		var n = p.length;
@@ -7179,7 +7188,7 @@
 			return null;
 		}
 
-		return {x: q.x * s, y: q.y * s, nx: -ty, ny: tx,
+		return {x: (q.x + tr.x) * s, y: (q.y + tr.y) * s, nx: -ty, ny: tx,
 			t: (start) ? a / total : 1 - a / total};
 	};
 
@@ -7221,8 +7230,18 @@
 
 		var total = lengths[lengths.length - 1];
 
-		// Painted center line for the width handles
-		this.centerLine = p;
+		// Painted center line for the width handles in model units. The
+		// coordinates of the canvas include the view translate unless the
+		// shape is painted in model units, where viewTranslate is 0.
+		var tr = (this.viewTranslate != null) ? this.viewTranslate :
+			((this.state != null) ? this.state.view.translate : new mxPoint());
+		this.centerLine = [];
+
+		for (var i = 0; i < p.length; i++)
+		{
+			this.centerLine.push(new mxPoint(p[i].x - tr.x, p[i].y - tr.y));
+		}
+
 		this.centerLength = total;
 
 		var sw = this.getStartWidth();
@@ -7370,8 +7389,11 @@
 	 * Removes the local loops of the given offset polyline by cutting it at
 	 * the self-intersections whose distance along the center line (lengths
 	 * of the corresponding center points) is at most span, so that crossings
-	 * of the edge itself are kept.
+	 * of the edge itself are kept. Loops of at most maxLoopPoints points are
+	 * cut, which limits the time for huge widths and many points.
 	 */
+	TaperedArrowShape.prototype.maxLoopPoints = 1000;
+
 	TaperedArrowShape.prototype.removeLoops = function(pts, lengths, span)
 	{
 		var n = pts.length;
@@ -7384,7 +7406,8 @@
 			var ip = null;
 			var j = i + 2;
 
-			while (j < n - 1 && lengths[j] - lengths[i + 1] <= span)
+			while (j < n - 1 && j < i + 2 + this.maxLoopPoints &&
+				lengths[j] - lengths[i + 1] <= span)
 			{
 				j++;
 			}
@@ -7601,6 +7624,9 @@
 
 	ZigzagShape.prototype.size = 10;
 
+	// Maximum number of full segments
+	ZigzagShape.prototype.maxSegments = 10000;
+
 	ZigzagShape.prototype.isRoundable = function()
 	{
 		return true;
@@ -7633,8 +7659,8 @@
 		var topY = inset;
 		var bottomY = h - inset;
 
-		// Number of full peak-to-peak segments, adjusted to fit width
-		var numFull = Math.max(1, Math.round(w / size) - 1);
+		// Number of full peak-to-peak segments, adjusted to fit width and limited for huge widths
+		var numFull = Math.min(Math.max(1, Math.round(w / size) - 1), this.maxSegments);
 		var halfWave = w / (numFull + 1);
 		// End segments are half-width so angle matches middle segments
 		var halfEnd = halfWave / 2;
@@ -10281,7 +10307,9 @@
 		{
 			var handles = vertexHandlerCreateCustomHandles.apply(this, arguments);
 			
-			if (this.graph.isCellRotatable(this.state.cell))
+			// Vertices without a geometry have no paint bounds to place the handles
+			if (this.graph.isCellRotatable(this.state.cell) &&
+				this.state.getPaintBounds() != null)
 			// LATER: Make locked state independent of rotatable flag, fix toggle if default is false
 			//if (this.graph.isCellResizable(this.state.cell) || this.graph.isCellMovable(this.state.cell))
 			{

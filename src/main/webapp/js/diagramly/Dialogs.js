@@ -1377,7 +1377,7 @@ var BackgroundImageDialog = function(editorUi, applyFn, img, color, showColor)
 		btns.appendChild(btn);
 	}
 
-	applyBtn = mxUtils.button(mxResources.get('apply'), function()
+	var applyBtn = mxUtils.button(mxResources.get('apply'), function()
 	{
 		editorUi.hideDialog();
 
@@ -1793,31 +1793,34 @@ var ParseDialog = function(editorUi, title, defaultType)
 						}
 					}
 
-					var runEdgeLayout = true;
-
-					if (type == 'horizontalFlow' || type == 'verticalFlow')
-					{
-						var flowLayout = new mxHierarchicalLayout(graph,
-							(type == 'horizontalFlow') ?
-							mxConstants.DIRECTION_WEST :
-							mxConstants.DIRECTION_NORTH);
-						flowLayout.execute(graph.getDefaultParent(), cells);
-						runEdgeLayout = false;
-					}
-					else if (type == 'circle')
+					if (type == 'circle')
 					{
 						var circleLayout = new mxCircleLayout(graph);
 						circleLayout.execute(graph.getDefaultParent());
 					}
 					else
 					{
-						var layout = new mxFastOrganicLayout(graph);
-						layout.disableEdgeStyle = false;
-						layout.forceConstant = 180;
-						layout.execute(graph.getDefaultParent());
+						// Same ELK layouts as Arrange > Layout: organic for
+						// the diagram, layered for the flows
+						var list = editorUi.resolveLayoutList(
+							(type == 'diagram') ? 'organic' : type);
+
+						if (list == null)
+						{
+							throw new Error(mxResources.get(
+								'invalidCallFnNotFound', [type]));
+						}
+
+						var layouts = graph.createLayouts(list);
+
+						for (var i = 0; i < layouts.length; i++)
+						{
+							layouts[i].executeSync(graph.getDefaultParent());
+						}
 					}
-					
-					if (runEdgeLayout)
+
+					// The flows route parallel edges themselves
+					if (type == 'diagram' || type == 'circle')
 					{
 						var edgeLayout = new mxParallelEdgeLayout(graph);
 						edgeLayout.spacing = 30;
@@ -2892,6 +2895,7 @@ var NewDialog = function(editorUi, compact, showName, callback, createOnly, canc
 			if (selectedElt != null)
 			{
 				selectedElt.classList.remove('geTemplateSelected');
+				selectedElt.classList.remove('geTemplateHasPreview');
 				
 				if (selectedElt == generateElt)
 				{
@@ -2930,6 +2934,13 @@ var NewDialog = function(editorUi, compact, showName, callback, createOnly, canc
 			templateInfoObj = infoObj;
 
 			selectedElt.classList.add('geTemplateSelected');
+
+			// Class replaces :has(div) in the CSS, which restyled the
+			// page after every change of the DOM
+			if (selectedElt.getElementsByTagName('div').length > 0)
+			{
+				selectedElt.classList.add('geTemplateHasPreview');
+			}
 			
 			return true;
 		}
@@ -4126,7 +4137,7 @@ var NewDialog = function(editorUi, compact, showName, callback, createOnly, canc
 					{
 						templateXml = data;
 						templateLibs = null;
-						templateRealURl = fileUrl;
+						templateRealUrl = fileUrl;
 
 						editorUi.hideDialog();
 						create();
@@ -4554,7 +4565,6 @@ var SaveDialog = function(editorUi, title, saveFn, disabledModes, data, mimeType
 		editorUi.resetRecent('Folders');
 		storageSelect.innerHTML = '';
 		storageSelect.value = '';
-		pickFolderOption = null;
 		entries = {};
 		addStorageEntries();
 	}, null, 'geBtn');
@@ -8724,7 +8734,6 @@ var RevisionDialog = function(editorUi, revs, restoreFn)
 							pageSelect.innerText = '';
 							currentDoc = doc;
 							currentXml = xml;
-							parseSelectFunction = null;
 							diagrams = null;
 							realPage = 0;
 							
@@ -12700,6 +12709,15 @@ var ChatWindow = function(editorUi, x, y, w, h)
 					};
 
 					var url = Editor.replacePlaceholders(config.endpoint, resolver);
+
+					if (!Editor.isAllowedAiEndpoint(url))
+					{
+						EditorUi.debug('EditorUi.ChatWindow.send', 'blocked url', url);
+						handleErrorWithTimeout({message: mxResources.get('serviceUnavailableOrBlocked')});
+
+						return;
+					}
+
 					var req = new mxXmlRequest(url, JSON.stringify(params), 'POST');
 
 					req.setRequestHeaders = function(request, params)

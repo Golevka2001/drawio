@@ -380,162 +380,8 @@ Menus.prototype.init = function()
 		menu.addItem(mxResources.get('horizontal'), null, function() { graph.distributeCells(true, null, true); }, parent);
 		menu.addItem(mxResources.get('vertical'), null, function() { graph.distributeCells(false, null, true); }, parent);
 	})));
-	this.put('layout', new Menu(mxUtils.bind(this, function(menu, parent)
-	{
-		var promptSpacing = mxUtils.bind(this, function(defaultValue, fn)
-		{
-			this.editorUi.prompt(mxResources.get('spacing'), defaultValue, fn);
-		});
-
-		var runTreeLayout = mxUtils.bind(this, function(layout)
-		{
-			this.editorUi.tryAndHandle(mxUtils.bind(this, function()
-			{
-				var tmp = graph.getSelectionCell();
-				var roots = null;
-				
-				if (tmp == null || graph.getModel().getChildCount(tmp) == 0)
-				{
-					if (graph.getModel().getEdgeCount(tmp) == 0)
-					{
-						roots = graph.findTreeRoots(graph.getDefaultParent());
-					}
-				}
-				else
-				{
-					roots = graph.findTreeRoots(tmp);
-				}
-	
-				if (roots != null && roots.length > 0)
-				{
-					tmp = roots[0];
-				}
-				
-				if (tmp != null)
-				{
-					this.editorUi.executeLayout(function()
-					{
-						layout.execute(graph.getDefaultParent(), tmp);
-
-						if (!graph.isSelectionEmpty())
-						{
-							tmp = graph.getModel().getParent(tmp);
-							
-							if (graph.getModel().isVertex(tmp))
-							{
-								graph.updateGroupBounds([tmp], graph.gridSize * 2, true);
-							}
-						}
-					}, true);
-				}
-			}));
-		});
-
-		menu.addItem(mxResources.get('horizontalFlow'), null, mxUtils.bind(this, function()
-		{
-			this.editorUi.tryAndHandle(mxUtils.bind(this, function()
-			{
-				var layout = new mxHierarchicalLayout(graph, mxConstants.DIRECTION_WEST);
-
-				this.editorUi.executeLayout(function()
-				{
-					var selectionCells = graph.getSelectionCells();
-					layout.execute(graph.getDefaultParent(), selectionCells.length == 0 ? null : selectionCells);
-				}, true);
-			}));
-		}), parent);
-		menu.addItem(mxResources.get('verticalFlow'), null, mxUtils.bind(this, function()
-		{
-			this.editorUi.tryAndHandle(mxUtils.bind(this, function()
-			{
-				var layout = new mxHierarchicalLayout(graph, mxConstants.DIRECTION_NORTH);
-				
-				this.editorUi.executeLayout(function()
-				{
-					var selectionCells = graph.getSelectionCells();
-					layout.execute(graph.getDefaultParent(), selectionCells.length == 0 ? null : selectionCells);
-				}, true);
-			}));
-		}), parent);
-		menu.addSeparator(parent);
-		menu.addItem(mxResources.get('horizontalTree') + '...', null, mxUtils.bind(this, function()
-		{
-			var layout = new mxCompactTreeLayout(graph, true);
-			layout.edgeRouting = false;
-			layout.levelDistance = 30;
-			layout.sortEdges = true;
-
-			promptSpacing(layout.levelDistance, mxUtils.bind(this, function(spacing)
-			{
-				if (!isNaN(spacing))
-				{
-					layout.levelDistance = spacing;
-					runTreeLayout(layout);
-				}
-			}));
-		}), parent);
-		menu.addItem(mxResources.get('verticalTree') + '...', null, mxUtils.bind(this, function()
-		{
-			var layout = new mxCompactTreeLayout(graph, false);
-			layout.edgeRouting = false;
-			layout.levelDistance = 30;
-			layout.sortEdges = true;
-
-			promptSpacing(layout.levelDistance, mxUtils.bind(this, function(spacing)
-			{
-				if (!isNaN(spacing))
-				{
-					layout.levelDistance = spacing;
-					runTreeLayout(layout);
-				}
-			}));
-		}), parent);
-		menu.addItem(mxResources.get('radialTree') + '...', null, mxUtils.bind(this, function()
-		{
-			var layout = new mxRadialTreeLayout(graph);
-			layout.levelDistance = 80;
-			layout.autoRadius = true;
-
-			promptSpacing(layout.levelDistance, mxUtils.bind(this, function(spacing)
-			{
-				if (!isNaN(spacing))
-				{
-					layout.levelDistance = spacing;
-					runTreeLayout(layout);
-				}
-			}));
-		}), parent);
-		menu.addSeparator(parent);
-		menu.addItem(mxResources.get('organic') + '...', null, mxUtils.bind(this, function()
-		{
-			var layout = new mxFastOrganicLayout(graph);
-
-			promptSpacing(layout.forceConstant, mxUtils.bind(this, function(newValue)
-			{
-				this.editorUi.tryAndHandle(mxUtils.bind(this, function()
-				{
-					layout.forceConstant = newValue;
-
-					this.editorUi.executeLayout(function()
-					{
-						var tmp = graph.getSelectionCell();
-
-						if (tmp == null || graph.getModel().getChildCount(tmp) == 0)
-						{
-							tmp = graph.getDefaultParent();
-						}
-
-						layout.execute(tmp);
-
-						if (graph.getModel().isVertex(tmp))
-						{
-							graph.updateGroupBounds([tmp], graph.gridSize * 2, true);
-						}
-					}, true);
-				}));
-			}));
-		}), parent);
-	})));
+	// Populated by the application, which provides the layouts
+	this.put('layout', new Menu(function(menu, parent) {}));
 	this.put('navigation', new Menu(mxUtils.bind(this, function(menu, parent)
 	{
 		this.addMenuItems(menu, ['home', '-', 'exitGroup', 'enterGroup', '-', 'expand', 'collapse', '-', 'collapsible'], parent);
@@ -597,21 +443,23 @@ Menus.prototype.init = function()
 	})));
 	this.put('viewZoom', new Menu(mxUtils.bind(this, function(menu, parent)
 	{
-		this.addMenuItems(menu, ['smartFit', '-'], parent);
+		this.addMenuItems(menu, ['resetView', 'fitWindow', '-'], parent);
 		var scales = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
-		
+		var ui = this.editorUi;
+
 		for (var i = 0; i < scales.length; i++)
 		{
 			(function(scale)
 			{
 				menu.addItem((scale * 100) + '%', null, function()
 				{
+					ui.setFitWindowEnabled(false);
 					graph.zoomTo(scale);
 				}, parent);
 			})(scales[i]);
 		}
 
-		this.addMenuItems(menu, ['-', 'fitWindow', 'fitPageWidth', 'fitPage', 'fitTwoPages', '-', 'customZoom'], parent);
+		this.addMenuItems(menu, ['-', 'fitPageWidth', 'fitPage', 'fitTwoPages', '-', 'customZoom'], parent);
 	})));
 	this.put('file', new Menu(mxUtils.bind(this, function(menu, parent)
 	{
@@ -1916,21 +1764,37 @@ Menus.prototype.addPopupMenuCellEditItems = function(menu, cell, evt, parent)
 
 	if (graph.getModel().isVertex(cell) && graph.isCellConnectable(cell))
 	{
-		// Adds a connection point at the location of the context menu
-		var pt = graph.popupMenuHandler.getTriggerPoint();
-
-		if (!graph.isCellLocked(cell) && graph.getConnectionConstraintForPoint(
-			state, pt.x, pt.y) != null)
-		{
-			this.addMenuItem(menu, 'addConnectionPoint', parent, evt);
-		}
-
+		this.addConnectionPointMenuItem(menu, cell, parent, evt);
 		this.addMenuItem(menu, 'editConnectionPoints', parent, evt);
 	}
 
 	if (state != null && mxUtils.getValue(state.style, mxConstants.STYLE_SHAPE) === 'mxgraph.basic.polygon')
 	{
 		this.addMenuItem(menu, 'editPolygon', parent, evt);
+	}
+};
+
+/**
+ * Adds addConnectionPoint for the given cell if the location of the context
+ * menu maps to a connection point of the cell (see
+ * Graph.getConnectionConstraintForPoint). Must only be used in menus that
+ * are opened by the popup menu handler.
+ */
+Menus.prototype.addConnectionPointMenuItem = function(menu, cell, parent, evt)
+{
+	var graph = this.editorUi.editor.graph;
+
+	if (cell != null && graph.getModel().isVertex(cell) &&
+		graph.isCellConnectable(cell) && !graph.isCellLocked(cell))
+	{
+		// Adds a connection point at the location of the context menu
+		var pt = graph.popupMenuHandler.getTriggerPoint();
+
+		if (graph.getConnectionConstraintForPoint(
+			graph.view.getState(cell), pt.x, pt.y) != null)
+		{
+			this.addMenuItem(menu, 'addConnectionPoint', parent, evt);
+		}
 	}
 };
 

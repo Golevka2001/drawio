@@ -10,6 +10,7 @@ Editor = function(chromeless, themes, model, graph, editable)
 	this.chromeless = (chromeless != null) ? chromeless : this.chromeless;
 	this.initStencilRegistry();
 	this.graph = graph || this.createGraph(themes, model);
+	this.graph.chromeless = this.chromeless;
 	this.editable = (editable != null) ? editable : !chromeless;
 	this.undoManager = this.createUndoManager();
 	this.status = '';
@@ -312,6 +313,14 @@ Editor.simpleLabels = false;
  * and redundant wrapper spans are unwrapped. Default is false.
  */
 Editor.optimizeHtmlLabels = false;
+
+/**
+ * Specifies if the cells are painted in model units in the editor so that
+ * zoom and pan do not repaint the diagram (see mxGraphView.modelCoordinates).
+ * Chromeless views always paint in model units. Default is true (false via
+ * fastRendering in the configuration switches the editor to the old path).
+ */
+Editor.fastRendering = true;
 	
 /**
  * Specifies if the native clipboard is enabled. Blocked in iframes for possible sandbox attribute.
@@ -1275,7 +1284,7 @@ Editor.prototype.editAsNew = function(xml, title, lightbox, pageId)
 	
 	if (pageId != null)
 	{
-		p += ((p.length > 0) ? '&' : '?') + 'page-id=' + pageId;
+		p += ((p.length > 0) ? '&' : '?') + 'page-id=' + encodeURIComponent(pageId);
 	}
 	
 	if (!navigator.standalone &&
@@ -1321,16 +1330,6 @@ Editor.prototype.createGraph = function(themes, model)
 {
 	var graph = new Graph(null, model, null, null, themes);
 	graph.transparentBackground = false;
-	
-	// Disables CSS transforms in Safari in chromeless mode
-	var graphIsCssTransformsSupported = graph.isCssTransformsSupported;
-	var self = this;
-
-	graph.isCssTransformsSupported = function()
-	{
-		return graphIsCssTransformsSupported.apply(this, arguments) &&
-			(!self.chromeless || !mxClient.IS_SF);
-	};
 
 	// Opens all links in a new window while editing
 	if (!this.chromeless)
@@ -1362,9 +1361,6 @@ Editor.prototype.resetGraph = function()
 	this.graph.background = null;
 	this.graph.pageScale = mxGraph.prototype.pageScale;
 	this.graph.pageFormat = mxGraph.prototype.pageFormat;
-	this.graph.currentScale = 1;
-	this.graph.currentTranslate.x = 0;
-	this.graph.currentTranslate.y = 0;
 	this.updateGraphComponents();
 	this.graph.view.setScale(1);
 };
@@ -1866,6 +1862,11 @@ function Dialog(editorUi, elt, w, h, modal, closable, onClose, noScroll, transpa
 	this.onDialogClose = onClose;
 	this.container = div;
 
+	if (modal)
+	{
+		this.installFocusTrap();
+	}
+
 	if (minSize != null)
 	{
 		this.addResizeHandler(minSize);
@@ -2198,6 +2199,126 @@ function installMxWindowEdgeResizeHandles(wnd)
 }
 
 /**
+ * Keeps the focus in the dialog when Tab is pressed. Tab on the last control
+ * focuses the first control, Shift+Tab on the first control focuses the last
+ * control and Tab outside of the dialog (eg. in the diagram behind the dialog)
+ * moves the focus into the dialog.
+ */
+Dialog.prototype.installFocusTrap = function()
+{
+	var isTab = function(evt)
+	{
+		return evt.keyCode == 9 /* Tab */ && !mxEvent.isControlDown(evt) &&
+			!mxEvent.isAltDown(evt) && !mxEvent.isMetaDown(evt);
+	};
+
+	// Radio buttons in a group are a single tab stop
+	var isSameTabStop = function(a, b)
+	{
+		return a == b || (a != null && b != null && a.type == 'radio' &&
+			b.type == 'radio' && a.name != '' && a.name == b.name &&
+			a.form == b.form);
+	};
+
+	// Bubbling so that controls in the dialog can handle Tab
+	mxEvent.addListener(this.container, 'keydown', mxUtils.bind(this, function(evt)
+	{
+		if (isTab(evt) && !mxEvent.isConsumed(evt) && !evt.defaultPrevented)
+		{
+			var stops = this.getTabStops();
+			var shift = mxEvent.isShiftDown(evt);
+
+			if (stops.length == 0 || isSameTabStop(document.activeElement,
+				stops[(shift) ? 0 : stops.length - 1]))
+			{
+				this.focusTabStop(stops, !shift);
+				mxEvent.consume(evt);
+			}
+		}
+	}));
+
+	var isOutside = mxUtils.bind(this, function(elt)
+	{
+		return elt != null && elt != document.body &&
+			!mxUtils.isAncestorNode(this.container, elt);
+	});
+
+	// Capturing so that the diagram and the search box behind the
+	// dialog do not handle Tab
+	this.focusTrapHandler = mxUtils.bind(this, function(evt)
+	{
+		if (isTab(evt) && this.editorUi.dialog == this)
+		{
+			var first = !mxEvent.isShiftDown(evt);
+
+			if (isOutside(document.activeElement))
+			{
+				this.focusTabStop(this.getTabStops(), first);
+				mxEvent.consume(evt);
+			}
+			else if (document.activeElement == document.body)
+			{
+				// Tab continues after the last click, so checks where it went
+				window.setTimeout(mxUtils.bind(this, function()
+				{
+					if (this.editorUi.dialog == this &&
+						isOutside(document.activeElement))
+					{
+						this.focusTabStop(this.getTabStops(), first);
+					}
+				}), 0);
+			}
+		}
+	});
+
+	document.addEventListener('keydown', this.focusTrapHandler, true);
+};
+
+/**
+ * Returns the controls in the dialog that can be focused with Tab in
+ * document order.
+ */
+Dialog.prototype.getTabStops = function()
+{
+	var elts = this.container.querySelectorAll('a[href], button, input, ' +
+		'select, textarea, iframe, summary, [tabindex], [contenteditable]');
+	var stops = [];
+
+	for (var i = 0; i < elts.length; i++)
+	{
+		var elt = elts[i];
+
+		if (elt.tabIndex >= 0 && !elt.disabled && elt.type != 'hidden' &&
+			(elt.parentNode == null || !elt.parentNode.isContentEditable) &&
+			elt.getClientRects().length > 0 &&
+			mxUtils.getCurrentStyle(elt).visibility != 'hidden')
+		{
+			stops.push(elt);
+		}
+	}
+
+	return stops;
+};
+
+/**
+ * Focuses the first or last of the given tab stops.
+ */
+Dialog.prototype.focusTabStop = function(stops, first)
+{
+	if (stops.length > 0)
+	{
+		var elt = stops[(first) ? 0 : stops.length - 1];
+		elt.focus();
+
+		// Selects the text like Tab does
+		if (elt.nodeName == 'INPUT')
+		{
+			elt.select();
+		}
+	}
+};
+
+/**
  * Removes the dialog from the DOM.
  */
 Dialog.prototype.close = function(cancel, isEsc)
@@ -2211,7 +2332,13 @@ Dialog.prototype.close = function(cancel, isEsc)
 		
 		this.onDialogClose = null;
 	}
-	
+
+	if (this.focusTrapHandler != null)
+	{
+		document.removeEventListener('keydown', this.focusTrapHandler, true);
+		this.focusTrapHandler = null;
+	}
+
 	if (this.dialogImg != null && this.dialogImg.parentNode != null)
 	{
 		this.dialogImg.parentNode.removeChild(this.dialogImg);
@@ -3370,7 +3497,7 @@ PageSetupDialog.addPageFormatPanel = function(div, namePostfix, pageFormat, page
 					landscapeCheckBox.removeAttribute('checked');
 					landscapeCheckBox.defaultChecked = false;
 					landscapeCheckBox.checked = false;
-					detected = true;
+					var detected = true;
 				}
 				else if (pageFormat.width == f.format.height && pageFormat.height == f.format.width)
 				{
@@ -3719,7 +3846,7 @@ var FilenameDialog = function(editorUi, filename, buttonText, fn, label,
 		table.appendChild(content);
 	}
 	
-	row = document.createElement('div');
+	var row = document.createElement('div');
 	row.style.gridColumn = '1 / span 2';
 	row.style.paddingTop = (hints != null) ? '6px' : '14px';
 	row.style.whiteSpace = 'nowrap';
@@ -4208,16 +4335,8 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 		height = bounds2.height;
 		var bounds = new mxRectangle(scale * tr.x, scale * tr.y, fmt.width * ps, fmt.height * ps);
 
-		// Maps from canvas to screen coordinates using the DOM as the view
-		// state is normalized in this call if CSS transforms are used
-		var ctm = (this.view.canvas != null && this.view.canvas.getCTM != null) ?
-			this.view.canvas.getCTM() : null;
-		var cs = (ctm != null) ? ctm.a : 1;
-		var cx = (ctm != null) ? ctm.e : 0;
-		var cy = (ctm != null) ? ctm.f : 0;
-
 		// Does not show page breaks if the scale is too small
-		visible = visible && Math.min(bounds.width, bounds.height) * cs > this.minPageBreakDist;
+		visible = visible && Math.min(bounds.width, bounds.height) > this.minPageBreakDist;
 
 		var horizontalCount = (visible) ? Math.ceil(height / bounds.height) - 1 : 0;
 		var verticalCount = (visible) ? Math.ceil(width / bounds.width) - 1 : 0;
@@ -4236,20 +4355,21 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 
 		if (visible && this.container != null)
 		{
-			var cw = this.container.clientWidth;
-			var ch = this.container.clientHeight;
-			var x0 = (this.container.scrollLeft - cw - cx) / cs - bounds2.x;
-			var y0 = (this.container.scrollTop - ch - cy) / cs - bounds2.y;
+			var metrics = this.getContainerMetrics();
+			var cw = metrics.clientWidth;
+			var ch = metrics.clientHeight;
+			var x0 = metrics.scrollLeft - cw - bounds2.x;
+			var y0 = metrics.scrollTop - ch - bounds2.y;
 
 			vMin = Math.max(0, Math.floor(x0 / bounds.width) - 1);
-			vMax = Math.min(verticalCount - 1, Math.ceil((x0 + 3 * cw / cs) / bounds.width));
+			vMax = Math.min(verticalCount - 1, Math.ceil((x0 + 3 * cw) / bounds.width));
 			hMin = Math.max(0, Math.floor(y0 / bounds.height) - 1);
-			hMax = Math.min(horizontalCount - 1, Math.ceil((y0 + 3 * ch / cs) / bounds.height));
+			hMax = Math.min(horizontalCount - 1, Math.ceil((y0 + 3 * ch) / bounds.height));
 
 			if (hMin > 0 || hMax < horizontalCount - 1 || vMin > 0 || vMax < verticalCount - 1)
 			{
-				this.pageBreakCoverage = new mxRectangle(this.container.scrollLeft - cw / 2,
-					this.container.scrollTop - ch / 2, 2 * cw, 2 * ch);
+				this.pageBreakCoverage = new mxRectangle(metrics.scrollLeft - cw / 2,
+					metrics.scrollTop - ch / 2, 2 * cw, 2 * ch);
 			}
 		}
 

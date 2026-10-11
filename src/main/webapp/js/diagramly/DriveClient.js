@@ -798,7 +798,7 @@ DriveClient.prototype.authorizeStep2 = function(state, immediate, success, error
 						(remember? '&access_type=offline&prompt=consent%20select_account' : '') + //Ask for consent again to get a new refresh token
 						'&scope=' + encodeURIComponent(this.scopes.join(' ')) +
 						'&state=' + encodeURIComponent('cId=' + this.clientId + '&domain=' + window.location.host + '&token=' + state + //To identify which app/domain is used
-						this.getRedirectPathState() + (this.sameWinRedirectUrl? '&redirect=' + this.sameWinRedirectUrl : ''));
+						'&relay=1' + this.getRedirectPathState() + (this.sameWinRedirectUrl? '&redirect=' + this.sameWinRedirectUrl : ''));
 				
 				if (this.sameWinAuthMode)
 				{
@@ -816,7 +816,7 @@ DriveClient.prototype.authorizeStep2 = function(state, immediate, success, error
 				
 				if (popup != null)
 				{
-					window.onGoogleDriveCallback = mxUtils.bind(this, function(newAuthInfo, authWindow)
+					window.onGoogleDriveCallback = this.createAuthCallback(state, mxUtils.bind(this, function(newAuthInfo, authWindow)
 					{
 						window.onGoogleDriveCallback = null;
 						
@@ -848,7 +848,7 @@ DriveClient.prototype.authorizeStep2 = function(state, immediate, success, error
 								authWindow.close();
 							}
 						}
-					});
+					}));
 				
 					popup.focus();
 				}
@@ -2862,7 +2862,9 @@ DriveClient.prototype.pickFolder = function(fn, force)
 
 				this.ui.confirm(mxResources.get('useRootFolder'), mxUtils.bind(this, function()
 				{
-					this.folderPickerCallback({action: google.picker.Action.PICKED,
+					// Value of google.picker.Action.PICKED, the root folder
+					// needs no Picker and its API may not be loaded
+					this.folderPickerCallback({action: 'picked',
 						docs: [{type: 'folder', id: 'root'}]});
 				}), mxUtils.bind(this, function()
 				{
