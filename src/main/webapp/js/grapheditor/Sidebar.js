@@ -2796,7 +2796,8 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 
 	var temp = parseInt(this.initialDefaultVertexStyle['fontSize']);
 	var fontSize = !isNaN(temp) ? 'fontSize=' + Math.min(16, temp) + ';' : '';
-	var edgeLabelStyle = graph.appendFontSize('edgeLabel;resizable=0;html=1;', graph.edgeFontSize);
+	// Label cells of edges inherit the text styles of the edge
+	var edgeLabelStyle = 'edgeLabel;resizable=0;html=1;' + Graph.createInheritedLabelStyle();
 	
 	// Reusable cells
 	var field = new mxCell('List Item', new mxGeometry(0, 0, 80, 30),
@@ -2822,7 +2823,7 @@ Sidebar.prototype.addGeneralPalette = function(expand)
 	 	this.createVertexTemplateEntry('shape=hexagon;perimeter=hexagonPerimeter2;whiteSpace=wrap;html=1;shapeInside=1;fixedSize=1;', 120, 80, '', 'Hexagon', null, null, 'hexagon preparation'),
 	 	this.createVertexTemplateEntry('triangle;whiteSpace=wrap;html=1;shapeInside=1;', 60, 80, '', 'Triangle', null, null, 'triangle logic inverter buffer'),
 	 	this.createVertexTemplateEntry('shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;', 60, 80, '', 'Cylinder', null, null, 'cylinder data database'),
-	 	this.createVertexTemplateEntry('ellipse;shape=cloud;whiteSpace=wrap;html=1;', 120, 80, '', 'Cloud', null, null, 'cloud network'),
+	 	this.createVertexTemplateEntry('ellipse;shape=cloud;whiteSpace=wrap;html=1;perimeter=cloudPerimeter;', 120, 80, '', 'Cloud', null, null, 'cloud network'),
 	 	this.createVertexTemplateEntry('shape=document;whiteSpace=wrap;html=1;boundedLbl=1;', 120, 80, '', 'Document'),
 	 	this.createVertexTemplateEntry('shape=internalStorage;whiteSpace=wrap;html=1;backgroundOutline=1;', 80, 80, '', 'Internal Storage'),
 	 	this.createVertexTemplateEntry('shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;', 120, 80, '', 'Cube'),
@@ -3563,7 +3564,8 @@ Sidebar.prototype.addUmlPalette = function(expand)
 			edge.geometry.x = -1;
 			edge.edge = true;
 			
-	    	var cell = new mxCell('1', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;');
+	    	var cell = new mxCell('1', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;' +
+				Graph.createInheritedLabelStyle());
 	    	cell.geometry.relative = true;
 	    	cell.setConnectable(false);
 	    	cell.vertex = true;
@@ -3579,13 +3581,15 @@ Sidebar.prototype.addUmlPalette = function(expand)
 			edge.geometry.relative = true;
 			edge.edge = true;
 			
-	    	var cell1 = new mxCell('parent', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;');
+	    	var cell1 = new mxCell('parent', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=bottom;' +
+				Graph.createInheritedLabelStyle());
 	    	cell1.geometry.relative = true;
 	    	cell1.setConnectable(false);
 	    	cell1.vertex = true;
 	    	edge.insert(cell1);
 			
-	    	var cell2 = new mxCell('child', new mxGeometry(1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;');
+	    	var cell2 = new mxCell('child', new mxGeometry(1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=right;verticalAlign=bottom;' +
+				Graph.createInheritedLabelStyle());
 	    	cell2.geometry.relative = true;
 	    	cell2.setConnectable(false);
 	    	cell2.vertex = true;
@@ -3625,13 +3629,15 @@ Sidebar.prototype.addUmlPalette = function(expand)
 			edge.geometry.relative = true;
 			edge.edge = true;
 			
-	    	var cell1 = new mxCell('0..n', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=top;');
+	    	var cell1 = new mxCell('0..n', new mxGeometry(-1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=left;verticalAlign=top;' +
+				Graph.createInheritedLabelStyle());
 	    	cell1.geometry.relative = true;
 	    	cell1.setConnectable(false);
 	    	cell1.vertex = true;
 	    	edge.insert(cell1);
 			
-	    	var cell2 = new mxCell('1', new mxGeometry(1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=right;verticalAlign=top;');
+	    	var cell2 = new mxCell('1', new mxGeometry(1, 0, 0, 0), 'edgeLabel;resizable=0;html=1;align=right;verticalAlign=top;' +
+				Graph.createInheritedLabelStyle());
 	    	cell2.geometry.relative = true;
 	    	cell2.setConnectable(false);
 	    	cell2.vertex = true;
@@ -4304,7 +4310,7 @@ Sidebar.prototype.createEdgePreview = function(graph, sourceCell, cell)
 		if (typeof LibavoidRouting !== 'undefined' &&
 			LibavoidRouting.endPreview != null)
 		{
-			// Frees the router of the libavoid connect preview
+			// Drops the per-drag state of the libavoid connect preview
 			LibavoidRouting.endPreview(preview.handler);
 		}
 
@@ -5136,6 +5142,14 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 		return bounds;
 	};
 	
+	// Returns the bounds of the round drop target at the given end of an edge
+	function getRoundDropBounds(pt)
+	{
+		return new mxRectangle(pt.x - sidebar.roundDrop.width / 2,
+			pt.y - sidebar.roundDrop.height / 2,
+			sidebar.roundDrop.width, sidebar.roundDrop.height);
+	};
+
 	// Hides guides and preview if target is active
 	var dsCreatePreviewElement = dragSource.createPreviewElement;
 	
@@ -5316,6 +5330,7 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 	var startTime = new Date().getTime();
 	var timeOnTarget = 0;
 	var prev = null;
+	var lastMove = null;
 	
 	// Gets source cell style to compare shape below
 	var sourceCellStyle = this.editorUi.editor.graph.getCellStyle(cells[0]);
@@ -5354,6 +5369,7 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 		var state = graph.view.getState(cell);
 		activeArrow = null;
 		var bbox = null;
+		lastMove = {x: x, y: y, evt: evt};
 
 		// Time on target
 		if (prev != state)
@@ -5374,7 +5390,10 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 					if (activeArrow == null)
 					{
 						prev = state;
-						dragSource.getDropTarget(graph, x, y, evt);
+
+						// Uses the last mouse location since the mouse may have moved
+						// over the same cell, eg. from the end of an edge to its middle
+						dragSource.getDropTarget(graph, lastMove.x, lastMove.y, lastMove.evt);
 					}
 				}, this.dropTargetDelay + 10);
 			}
@@ -5473,18 +5492,12 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 				
 				if (roundSource.parentNode != null)
 				{
-					var p0 = pts[0];
-					bbox.add(checkArrow(x, y, new mxRectangle(p0.x - this.roundDrop.width / 2,
-						p0.y - this.roundDrop.height / 2, this.roundDrop.width,
-						this.roundDrop.height), roundSource));
+					bbox.add(checkArrow(x, y, getRoundDropBounds(pts[0]), roundSource));
 				}
 				
 				if (roundTarget.parentNode != null)
 				{
-					var pe = pts[pts.length - 1];
-					bbox.add(checkArrow(x, y, new mxRectangle(pe.x - this.roundDrop.width / 2,
-						pe.y - this.roundDrop.height / 2, this.roundDrop.width,
-						this.roundDrop.height), roundTarget));
+					bbox.add(checkArrow(x, y, getRoundDropBounds(pts[pts.length - 1]), roundTarget));
 				}
 			}
 			else
@@ -5536,21 +5549,6 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 			{
 				bbox.grow(10);
 			}
-		}
-		
-		direction = mxConstants.DIRECTION_NORTH;
-		
-		if (activeArrow == arrowRight)
-		{
-			direction = mxConstants.DIRECTION_EAST;
-		}
-		else if (activeArrow == arrowDown || activeArrow == roundTarget)
-		{
-			direction = mxConstants.DIRECTION_SOUTH;
-		}
-		else if (activeArrow == arrowLeft)
-		{
-			direction = mxConstants.DIRECTION_WEST;
 		}
 		
 		if (currentStyleTarget != null && activeArrow == styleTarget)
@@ -5607,6 +5605,14 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 						if (graph.model.getTerminal(cell, false) == null)
 						{
 							graph.container.appendChild(roundTarget);
+						}
+
+						// Activates the end under the mouse at once since a drop
+						// before the next move would otherwise split the edge
+						if (activeArrow == null)
+						{
+							checkArrow(x, y, getRoundDropBounds(p0), roundSource);
+							checkArrow(x, y, getRoundDropBounds(pe), roundTarget);
 						}
 					}
 				}
@@ -5689,6 +5695,21 @@ Sidebar.prototype.createDragSource = function(elt, dropHandler, preview, cells, 
 					}
 				}
 			}
+		}
+
+		direction = mxConstants.DIRECTION_NORTH;
+
+		if (activeArrow == arrowRight)
+		{
+			direction = mxConstants.DIRECTION_EAST;
+		}
+		else if (activeArrow == arrowDown || activeArrow == roundTarget)
+		{
+			direction = mxConstants.DIRECTION_SOUTH;
+		}
+		else if (activeArrow == arrowLeft)
+		{
+			direction = mxConstants.DIRECTION_WEST;
 		}
 
 		if (!activeTarget && currentStateHandle != null)
@@ -6038,6 +6059,10 @@ Sidebar.prototype.createVertexTemplateFromCells = function(cells, width, height,
 {
 	// Use this line to convert calls to this function with lots of boilerplate code for creating cells
 	//console.trace('xml', Graph.compress(mxUtils.getXml(this.graph.encodeCells(cells))), cells);
+
+	// Edges end at the labels of new shapes with a label outside the shape
+	this.graph.addLabelPerimeters(cells);
+
 	return this.createItem(cells, title, showLabel, showTitle, width, height, allowCellsInserted,
 		showTooltip, clickFn, thumbWidth, thumbHeight, icon, startEditing, sourceCell, undefined, connectEdge);
 };

@@ -356,6 +356,46 @@ Editor.darkColor = '#121212';
 Editor.darkColorVar = '--ge-dark-color';
 
 /**
+ * Default foreground color for dark mode. Default is '#ffffff'.
+ */
+Editor.lightColor = '#ffffff';
+
+/**
+ * Name of the variable to use for the light color var in exported SVG.
+ * Default is '--ge-light-color'.
+ */
+Editor.lightColorVar = '--ge-light-color';
+
+/**
+ * Specifies if the default colors use the CSS system colors Canvas and
+ * CanvasText, which the browser resolves for the color scheme, instead
+ * of fixed colors for light mode. Default is false.
+ */
+Editor.systemColors = false;
+
+/**
+ * Returns the default foreground color of shapes as a light-dark
+ * expression. Editor.lightColorVar allows to override the dark color
+ * in exported SVGs.
+ */
+Editor.getShapeForegroundColor = function()
+{
+	return 'light-dark(' + ((Editor.systemColors) ? 'CanvasText' : '#000000') +
+		', var(' + Editor.lightColorVar + ', ' + Editor.lightColor + '))';
+};
+
+/**
+ * Returns the default background color of shapes as a light-dark
+ * expression. Editor.darkColorVar allows to override the dark color
+ * in exported SVGs.
+ */
+Editor.getShapeBackgroundColor = function()
+{
+	return 'light-dark(' + ((Editor.systemColors) ? 'Canvas' : '#ffffff') +
+		', var(' + Editor.darkColorVar + ', ' + Editor.darkColor + '))';
+};
+
+/**
  * Default page background color for light mode. Default is '#ffffff'.
  */
 Editor.pageBackgroundColor = '#ffffff';
@@ -405,6 +445,12 @@ Editor.showConnectHandle = false;
  * Whether to enable the inline toolbar. Default is true.
  */
 Editor.enableInlineToolbar = true;
+
+/**
+ * Whether the inline toolbar is shown for selected shapes and multiple
+ * selected cells. Needs enableInlineToolbar. Default is false.
+ */
+Editor.enableShapeInlineToolbar = false;
 
 /**
  * Whether new groups are created with transparentBounds=1 so that their
@@ -1361,6 +1407,8 @@ Editor.prototype.resetGraph = function()
 	this.graph.background = null;
 	this.graph.pageScale = mxGraph.prototype.pageScale;
 	this.graph.pageFormat = mxGraph.prototype.pageFormat;
+	this.graph.setMeasureScale(null);
+	this.graph.setBackgroundGradient(null);
 	this.updateGraphComponents();
 	this.graph.view.setScale(1);
 };
@@ -1398,7 +1446,7 @@ Editor.prototype.readGraphState = function(node)
 
 	this.graph.gridEnabled = (urlParams['grid'] != null ? urlParams['grid'] != '0' : grid != '0') &&
 		(!this.isChromelessView() || urlParams['grid'] == '1');
-	this.graph.gridSize = parseFloat(node.getAttribute('gridSize')) || mxGraph.prototype.gridSize;
+	this.graph.gridSize = Graph.parseGridSize(node.getAttribute('gridSize'));
 	this.graph.graphHandler.guidesEnabled = node.getAttribute('guides') != '0';
 	this.graph.setTooltips(node.getAttribute('tooltips') != '0' &&
 		(window.urlParams == null || urlParams['tooltips'] != '0'));
@@ -1489,6 +1537,8 @@ Editor.prototype.readGraphState = function(node)
 		this.graph.pageFormat = new mxRectangle(0, 0, pw, ph);
 	}
 
+	this.graph.setMeasureScale(node.getAttribute('measureScale'));
+
 	// Loads the persistent state settings
 	var bg = node.getAttribute('background');
 	
@@ -1500,6 +1550,10 @@ Editor.prototype.readGraphState = function(node)
 	{
 		this.graph.background = null;
 	}
+
+	// Validated gradient of the page background
+	this.graph.setBackgroundGradient(node.getAttribute('backgroundGradient'),
+		node.getAttribute('backgroundGradientDirection'));
 };
 
 /**
@@ -1602,9 +1656,31 @@ Editor.prototype.getGraphXml = function(ignoreSelection)
 	node.setAttribute('pageWidth', this.graph.pageFormat.width);
 	node.setAttribute('pageHeight', this.graph.pageFormat.height);
 
+	// Only written if it is not the default so that other files are unchanged
+	var measureScale = Graph.parseMeasureScale(this.graph.measureScale);
+
+	if (measureScale != 1)
+	{
+		node.setAttribute('measureScale', measureScale);
+	}
+
 	if (this.graph.background != null)
 	{
 		node.setAttribute('background', this.graph.background);
+	}
+
+	// Gradient of the page background (see Graph.backgroundGradient)
+	var gradient = Graph.parseBackgroundGradient(this.graph.backgroundGradient,
+		this.graph.backgroundGradientDirection);
+
+	if (gradient.color != null)
+	{
+		node.setAttribute('backgroundGradient', gradient.color);
+
+		if (gradient.direction != null)
+		{
+			node.setAttribute('backgroundGradientDirection', gradient.direction);
+		}
 	}
 	
 	return node;
@@ -2876,7 +2952,8 @@ PrintDialog.createPrintPreview = function(graph, scale, pf, border, x0, y0, auto
 		bg = '#ffffff';
 	}
 	
-	preview.backgroundColor = bg;
+	// Adds the gradient of the page background (see Graph.getPrintBackground)
+	preview.backgroundColor = graph.getPrintBackground(bg);
 
 	// Excludes hints from being printed as text labels
 	var isTextLabel = preview.isTextLabel;
@@ -3015,6 +3092,8 @@ var PageSetupDialog = function(editorUi)
 
 	var newBackgroundImage = graph.backgroundImage;
 	var newBackgroundColor = graph.background;
+	var newBackgroundGradient = {color: graph.backgroundGradient,
+		direction: graph.backgroundGradientDirection};
 
 	var changeImageLink = document.createElement('button');
 	changeImageLink.className = 'geBtn';
@@ -3023,7 +3102,7 @@ var PageSetupDialog = function(editorUi)
 
 	mxEvent.addListener(changeImageLink, 'click', function(evt)
 	{
-		editorUi.showBackgroundImageDialog(function(image, failed, color)
+		editorUi.showBackgroundImageDialog(function(image, failed, color, gradient)
 		{
 			if (!failed)
 			{
@@ -3036,7 +3115,12 @@ var PageSetupDialog = function(editorUi)
 			}
 
 			newBackgroundColor = color;
-		}, newBackgroundImage, newBackgroundColor, true);
+
+			if (gradient != null)
+			{
+				newBackgroundGradient = gradient;
+			}
+		}, newBackgroundImage, newBackgroundColor, true, newBackgroundGradient);
 
 		mxEvent.consume(evt);
 	});
@@ -3091,6 +3175,43 @@ var PageSetupDialog = function(editorUi)
 	}
 
 	advanced.content.appendChild(adaptiveRow);
+
+	// Drawing scale of the measure placeholders, eg. 1 : 50 (see
+	// Graph.measureScale)
+	var scaleRow = document.createElement('div');
+	scaleRow.className = 'geDialogFormRow';
+
+	var scaleLabel = document.createElement('span');
+	scaleLabel.className = 'geDialogFormLabel';
+	mxUtils.write(scaleLabel, mxResources.get('drawingScale') + ':');
+	scaleRow.appendChild(styleLabel(scaleLabel));
+
+	var scalePrefix = document.createElement('span');
+	scalePrefix.style.flex = '0 0 auto';
+	mxUtils.write(scalePrefix, '1 :');
+	scaleRow.appendChild(styleContent(scalePrefix));
+
+	var scaleInput = document.createElement('input');
+	scaleInput.setAttribute('type', 'number');
+	scaleInput.setAttribute('min', '0');
+	scaleInput.setAttribute('step', 'any');
+	scaleInput.setAttribute('title', mxResources.get('drawingScale'));
+	scaleInput.style.width = '80px';
+	scaleInput.style.flex = '0 0 auto';
+	scaleInput.value = Graph.parseMeasureScale(graph.measureScale);
+	scaleRow.appendChild(scaleInput);
+
+	mxEvent.addListener(scaleInput, 'change', function()
+	{
+		var value = Number(scaleInput.value);
+
+		if (scaleInput.value == '' || !isFinite(value) || value <= 0)
+		{
+			scaleInput.value = Graph.parseMeasureScale(graph.measureScale);
+		}
+	});
+
+	advanced.content.appendChild(scaleRow);
 
 	// Initial view section — lets the author pin the page's opening viewport
 	// (pan + zoom). Stored on the diagram node via ChangePageView and restored
@@ -3291,6 +3412,18 @@ var PageSetupDialog = function(editorUi)
 			newBackgroundImage, accessor.get());
 		change.ignoreColor = graph.background == newBackgroundColor;
 
+		// Removing the background color also removes its gradient
+		var gradient = (newBackgroundColor != null && newBackgroundColor != mxConstants.NONE) ?
+			Graph.parseBackgroundGradient(newBackgroundGradient.color,
+				newBackgroundGradient.direction) : {color: null, direction: null};
+		var gradientChanged = gradient.color != graph.backgroundGradient ||
+			gradient.direction != graph.backgroundGradientDirection;
+
+		if (gradientChanged)
+		{
+			change.gradient = gradient;
+		}
+
 		var oldSrc = (graph.backgroundImage != null) ? graph.backgroundImage.src : null;
 		var newSrc = (newBackgroundImage != null) ? newBackgroundImage.src : null;
 
@@ -3306,10 +3439,19 @@ var PageSetupDialog = function(editorUi)
 			change.adaptiveColors = newAdaptive;
 		}
 
+		var newMeasureScale = Graph.parseMeasureScale(scaleInput.value);
+		var measureScaleChanged = newMeasureScale !=
+			Graph.parseMeasureScale(graph.measureScale);
+
+		if (measureScaleChanged)
+		{
+			change.measureScale = newMeasureScale;
+		}
+
 		if (graph.pageFormat.width != change.previousFormat.width ||
 			graph.pageFormat.height != change.previousFormat.height ||
 			!change.ignoreColor || !change.ignoreImage ||
-			adaptiveChanged)
+			adaptiveChanged || measureScaleChanged || gradientChanged)
 		{
 			graph.model.execute(change);
 		}
@@ -3793,7 +3935,8 @@ var FilenameDialog = function(editorUi, filename, buttonText, fn, label,
 				    	dropElt = null;
 				    }
 	
-				    if (mxUtils.indexOf(evt.dataTransfer.types, 'text/uri-list') >= 0)
+				    // Drop events created by scripts may have no dataTransfer and no data
+				    if (evt.dataTransfer != null && mxUtils.indexOf(evt.dataTransfer.types, 'text/uri-list') >= 0)
 				    {
 				    	nameInput.value = decodeURIComponent(evt.dataTransfer.getData('text/uri-list'));
 				    	genericBtn.click();
@@ -4145,6 +4288,7 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 			this.gridColor : '#ffffff';
 		var image = 'none';
 		var position = '';
+		var size = '';
 
 		// Uses light custom background with simple adaptive colors
 		if (graph.getAdaptiveColors() == 'simple' &&
@@ -4165,6 +4309,11 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 				image = (window.btoa) ? btoa(image) : Base64.encode(image, true);
 				image = 'url(' + 'data:image/svg+xml;base64,' + image + ')'
 				phase = graph.gridSize * this.scale * this.gridSteps * factor;
+
+				// Uses the exact size of the tile as Firefox rounds the
+				// size of SVG images and the error adds up with each tile
+				var tile = this.gridSteps * this.getGridLineDistance(factor);
+				size = tile + 'px ' + tile + 'px';
 			}
 			else
 			{
@@ -4203,11 +4352,30 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 		}
 
 		var useDiagramBackground = !Editor.isDarkMode() && graph.enableDiagramBackground;
+
+		// Adds the gradient of the page background as an image below the grid.
+		// The CSS is only created from validated colors and directions (see
+		// Graph.createBackgroundGradientCss), with the dark colors of the page
+		// background unless the custom background is used as it is (above).
+		var gradient = graph.getBackgroundGradient();
+		var gradientCss = (gradient != null) ? Graph.createBackgroundGradientCss(
+			gradient, graph.getAdaptiveColors() != 'simple') : null;
+		var backgroundImage = image;
+		var backgroundPosition = position;
+		var backgroundSize = size;
+
+		if (gradientCss != null)
+		{
+			backgroundImage = (image != 'none') ? image + ', ' + gradientCss : gradientCss;
+			backgroundPosition = (image != 'none') ? position + ', 0px 0px' : '';
+			backgroundSize = (image != 'none' && size != '') ? size + ', auto' : '';
+		}
 		
 		if (graph.view.backgroundPageShape != null)
 		{
-			graph.view.backgroundPageShape.node.style.backgroundPosition = position;
-			graph.view.backgroundPageShape.node.style.backgroundImage = image;
+			graph.view.backgroundPageShape.node.style.backgroundPosition = backgroundPosition;
+			graph.view.backgroundPageShape.node.style.backgroundSize = backgroundSize;
+			graph.view.backgroundPageShape.node.style.backgroundImage = backgroundImage;
 			graph.view.backgroundPageShape.node.style.backgroundColor = color;
 			graph.view.backgroundPageShape.node.style.borderColor = pageBorder;
 			graph.view.backgroundPageShape.node.style.colorScheme =
@@ -4227,6 +4395,7 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 		else
 		{
 			canvas.style.backgroundPosition = position;
+			canvas.style.backgroundSize = size;
 			canvas.style.backgroundImage = image;
 
 			if (urlParams['transparent'] == '1')
@@ -4241,22 +4410,37 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 			}
 			else
 			{
+				canvas.style.backgroundPosition = backgroundPosition;
+				canvas.style.backgroundSize = backgroundSize;
+				canvas.style.backgroundImage = backgroundImage;
 				canvas.style.backgroundColor = color;
 			}
 		}
 	};
 	
-	// Returns the SVG required for painting the background grid.
-	mxGraphView.prototype.createSvgGrid = function(color, factor)
+	// Returns the distance between the minor lines of the background grid.
+	mxGraphView.prototype.getGridLineDistance = function(factor)
 	{
-		factor = (factor != null) ? factor : 1;
-		var tmp = this.graph.gridSize * this.scale * factor;
-		
+		var tmp = this.graph.gridSize * this.scale * ((factor != null) ? factor : 1);
+
+		// Doubling 0, a negative or an invalid size never ends
+		if (!(tmp > 0 && isFinite(tmp)))
+		{
+			tmp = this.minGridSize;
+		}
+
 		while (tmp < this.minGridSize)
 		{
 			tmp *= 2;
 		}
-		
+
+		return tmp;
+	};
+
+	// Returns the SVG required for painting the background grid.
+	mxGraphView.prototype.createSvgGrid = function(color, factor)
+	{
+		var tmp = this.getGridLineDistance(factor);
 		var tmp2 = this.gridSteps * tmp;
 		
 		// Small grid lines
@@ -4287,7 +4471,9 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 				Editor.isDarkMode() ? 'dark' : 'light');
 		}
 		
-		var svg = '<svg style="' + scheme + '" width="' + size + '" height="' + size + '" xmlns="' + mxConstants.NS_SVG + '">' +
+		// The viewBox scales the pattern to the background size of the tile
+		var svg = '<svg style="' + scheme + '" width="' + size + '" height="' + size +
+			'" viewBox="0 0 ' + size + ' ' + size + '" xmlns="' + mxConstants.NS_SVG + '">' +
 		    '<defs><pattern id="grid" width="' + tmp2 + '" height="' + tmp2 + '" patternUnits="userSpaceOnUse">' +
 		    '<path d="' + d.join(' ') + '" fill="none" style="stroke:' + mxUtils.htmlEntities(cssColor.cssText) +
 			';" stroke="' + cssColor.light + '" opacity="0.2" stroke-width="1"/>' +
@@ -4524,20 +4710,6 @@ var WrapperWindow = function(editorUi, title, x, y, w, h, fn, div)
 		return bounds;
 	};
 	
-	// Add panning for background page in VML
-	var graphPanGraph = mxGraph.prototype.panGraph;
-	mxGraph.prototype.panGraph = function(dx, dy)
-	{
-		graphPanGraph.apply(this, arguments);
-		
-		if ((this.dialect != mxConstants.DIALECT_SVG && this.view.backgroundPageShape != null) &&
-			(!this.useScrollbarsForPanning || !mxUtils.hasScrollbars(this.container)))
-		{
-			this.view.backgroundPageShape.node.style.marginLeft = dx + 'px';
-			this.view.backgroundPageShape.node.style.marginTop = dy + 'px';
-		}
-	};
-
 	/**
 	 * Consumes click events for disabled menu items.
 	 */

@@ -278,7 +278,7 @@ var ColorPicker = function()
 		quiet = (quiet != null) ? quiet : false;
 
 		if (color == null || color == '' ||
-			mxUtils.isVarColor(color) ||
+			mxUtils.isVarOrSystemColor(color) ||
 			color == mxConstants.NONE)
 		{
 			color = '#ffffff';
@@ -346,7 +346,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 	if (color != 'default' &&
 		color != 'transparent' &&
 		color != mxConstants.NONE &&
-		!mxUtils.isVarColor(color) &&
+		!mxUtils.isVarOrSystemColor(color) &&
 		!mxUtils.isHexColor(color) &&
 		!mxUtils.isRgbColor(color) &&
 		!mxUtils.isLightDarkColor(color))
@@ -579,7 +579,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 				cssDefaultColor.light;
 		}
 		else if (input.value == '' || input.value == mxConstants.NONE ||
-			mxUtils.isVarColor(input.value))
+			mxUtils.isVarOrSystemColor(input.value))
 		{
 			input.style.background = 'transparent';
 		}
@@ -704,7 +704,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 		else
 		{
 			if (elt.value != mxConstants.NONE &&
-				!mxUtils.isVarColor(elt.value))
+				!mxUtils.isVarOrSystemColor(elt.value))
 			{
 				elt.value = validateColor(elt.value);
 				picker.fromString('#' + elt.value);
@@ -725,7 +725,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 				{
 					darkInput.value = mxConstants.NONE;
 				}
-				else if (mxUtils.isVarColor(input.value))
+				else if (mxUtils.isVarOrSystemColor(input.value))
 				{
 					darkInput.value = input.value;
 				}
@@ -765,8 +765,8 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 
 		// Blocks any non-alphabetic chars in colors
 		if ((useDefault && cssDefaultColor != null) ||
-			((/(^#?[a-zA-Z0-9]*$)/.test(color) || mxUtils.isVarColor(color)) &&
-			(/(^#?[a-zA-Z0-9]*$)/.test(dark) || mxUtils.isVarColor(dark))))
+			((/(^#?[a-zA-Z0-9]*$)/.test(color) || mxUtils.isVarOrSystemColor(color)) &&
+			(/(^#?[a-zA-Z0-9]*$)/.test(dark) || mxUtils.isVarOrSystemColor(dark))))
 		{
 			if (useDefault)
 			{
@@ -785,14 +785,14 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 				}
 
 				if (color != mxConstants.NONE &&
-					!mxUtils.isVarColor(color) &&
+					!mxUtils.isVarOrSystemColor(color) &&
 					color.charAt(0) != '#')
 				{
 					color = '#' + validateColor(color);
 				}
 
 				if (dark != mxConstants.NONE &&
-					!mxUtils.isVarColor(dark) &&
+					!mxUtils.isVarOrSystemColor(dark) &&
 					dark.charAt(0) != '#')
 				{
 					dark = '#' + validateColor(dark);
@@ -828,8 +828,8 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 		var dark = darkInput.value;
 
 		if (!((useDefault && cssDefaultColor != null) ||
-			((/(^#?[a-zA-Z0-9]*$)/.test(color) || mxUtils.isVarColor(color)) &&
-			(/(^#?[a-zA-Z0-9]*$)/.test(dark) || mxUtils.isVarColor(dark)))))
+			((/(^#?[a-zA-Z0-9]*$)/.test(color) || mxUtils.isVarOrSystemColor(color)) &&
+			(/(^#?[a-zA-Z0-9]*$)/.test(dark) || mxUtils.isVarOrSystemColor(dark)))))
 		{
 			return;
 		}
@@ -840,14 +840,14 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 			if (dark == '') dark = mxConstants.NONE;
 
 			if (color != mxConstants.NONE &&
-				!mxUtils.isVarColor(color) &&
+				!mxUtils.isVarOrSystemColor(color) &&
 				color.charAt(0) != '#')
 			{
 				color = '#' + validateColor(color);
 			}
 
 			if (dark != mxConstants.NONE &&
-				!mxUtils.isVarColor(dark) &&
+				!mxUtils.isVarOrSystemColor(dark) &&
 				dark.charAt(0) != '#')
 			{
 				dark = '#' + validateColor(dark);
@@ -1482,7 +1482,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 			}
 			else
 			{
-				if (mxUtils.isVarColor(cssColor.light))
+				if (mxUtils.isVarOrSystemColor(cssColor.light))
 				{
 					input.value = cssColor.light;
 				}
@@ -1508,7 +1508,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 			}
 			else
 			{
-				if (mxUtils.isVarColor(cssColor.dark))
+				if (mxUtils.isVarOrSystemColor(cssColor.dark))
 				{
 					darkInput.value = cssColor.dark;
 				}
@@ -1698,7 +1698,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 			if (newColor != 'default' &&
 				newColor != 'transparent' &&
 				newColor != mxConstants.NONE &&
-				!mxUtils.isVarColor(newColor) &&
+				!mxUtils.isVarOrSystemColor(newColor) &&
 				!mxUtils.isHexColor(newColor) &&
 				!mxUtils.isRgbColor(newColor) &&
 				!mxUtils.isLightDarkColor(newColor))
@@ -1732,7 +1732,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 				}
 				else
 				{
-					if (mxUtils.isVarColor(cssColor.light))
+					if (mxUtils.isVarOrSystemColor(cssColor.light))
 					{
 						input.value = cssColor.light;
 					}
@@ -1758,7 +1758,7 @@ var ColorDialog = function(editorUi, color, apply, cancelFn, defaultColor, defau
 				}
 				else
 				{
-					if (mxUtils.isVarColor(cssColor.dark))
+					if (mxUtils.isVarOrSystemColor(cssColor.dark))
 					{
 						darkInput.value = cssColor.dark;
 					}
@@ -1965,7 +1965,7 @@ var ColorWindow = function(editorUi, x, y, w)
 				// Passes allowInherit so an external change (eg. collaborator
 				// edit) does not drop the Inherit button while the window is open
 				this.colorDialog.setColor(color, this.currentDefaultColor,
-					this.currentDefaultColorValue, this.currentSingleColorMode,
+					this.getDefaultColorValue(), this.currentSingleColorMode,
 					this.currentAllowInherit);
 			}
 		}
@@ -1974,6 +1974,22 @@ var ColorWindow = function(editorUi, x, y, w)
 	graph.getSelectionModel().addListener(mxEvent.CHANGE, refreshColor);
 	graph.getModel().addListener(mxEvent.CHANGE, refreshColor);
 	editorUi.addListener('styleChanged', refreshColor);
+
+	// Updates a default color that depends on the text selection of the
+	// in-place editor (see Graph.setEditingFontColor) if the selection is
+	// changed there, eg. from a part of the text to all text. Single color
+	// mode is skipped as it focuses the input of the dialog.
+	var selectionChangeHandler = mxUtils.bind(this, function()
+	{
+		if (typeof this.currentDefaultColorValue === 'function' &&
+			!this.currentSingleColorMode && graph.cellEditor.textarea != null &&
+			document.activeElement == graph.cellEditor.textarea)
+		{
+			refreshColor();
+		}
+	});
+
+	mxEvent.addListener(document, 'selectionchange', selectionChangeHandler);
 
 	// Saves the text selection if the in-place editor has the focus when the
 	// window is used, so that colors apply to text selected after opening it
@@ -2027,11 +2043,30 @@ var ColorWindow = function(editorUi, x, y, w)
 		}
 	});
 
-	editorUi.installResizeHandler(this, true);
+	// Removes the listeners outside of the window in destroy, as they keep
+	// the editor alive (the window removes the listeners of its elements)
+	editorUi.installResizeHandler(this, true, function()
+	{
+		graph.getSelectionModel().removeListener(refreshColor);
+		graph.getModel().removeListener(refreshColor);
+		editorUi.removeListener(refreshColor);
+		mxEvent.removeListener(document, 'selectionchange', selectionChangeHandler);
+	});
 };
 
 /**
- * Updates the color window state for a new color property.
+ * Returns the default color value, which may be given as a function.
+ */
+ColorWindow.prototype.getDefaultColorValue = function()
+{
+	return (typeof this.currentDefaultColorValue === 'function') ?
+		this.currentDefaultColorValue() : this.currentDefaultColorValue;
+};
+
+/**
+ * Updates the color window state for a new color property. The default
+ * color value may be a function that returns it, eg. if it depends on the
+ * text selection.
  */
 ColorWindow.prototype.update = function(color, applyFn, title,
 	defaultColor, defaultColorValue, singleColorMode, getColorFn, allowInherit)
@@ -2044,7 +2079,8 @@ ColorWindow.prototype.update = function(color, applyFn, title,
 
 	this.window.setTitle(title);
 	this.colorDialog.setApplyFn(applyFn);
-	this.colorDialog.setColor(color, defaultColor, defaultColorValue, singleColorMode, allowInherit);
+	this.colorDialog.setColor(color, defaultColor, this.getDefaultColorValue(),
+		singleColorMode, allowInherit);
 	this.window.setVisible(true);
 	this.fitHeight();
 	this.colorDialog.init();
@@ -2937,21 +2973,25 @@ var EditDiagramDialog = function(editorUi)
 			evt.stopPropagation();
 			evt.preventDefault();
 
-			if (evt.dataTransfer.files.length > 0)
+			// Drop events created by scripts may have no dataTransfer and no data
+			if (evt.dataTransfer != null)
 			{
-				var file = evt.dataTransfer.files[0];
-				var reader = new FileReader();
-
-				reader.onload = function(e)
+				if (evt.dataTransfer.files.length > 0)
 				{
-					textarea.value = e.target.result;
-				};
+					var file = evt.dataTransfer.files[0];
+					var reader = new FileReader();
 
-				reader.readAsText(file);
-			}
-			else
-			{
-				textarea.value = editorUi.extractGraphModelFromEvent(evt);
+					reader.onload = function(e)
+					{
+						textarea.value = e.target.result;
+					};
+
+					reader.readAsText(file);
+				}
+				else
+				{
+					textarea.value = editorUi.extractGraphModelFromEvent(evt);
+				}
 			}
 		};
 
@@ -3697,7 +3737,7 @@ ExportDialog.saveLocalFile = function(editorUi, data, filename, format)
 	else
 	{
 		mxUtils.alert(mxResources.get('drawingTooLarge'));
-		mxUtils.popup(xml);
+		mxUtils.popup(data);
 	}
 };
 
@@ -4615,7 +4655,12 @@ var LayersWindow = function(editorUi, x, y, w, h)
 	
 	mxEvent.addListener(div, 'dragover', function(evt)
 	{
-		evt.dataTransfer.dropEffect = 'move';
+		// Drag events created by scripts may have no dataTransfer
+		if (evt.dataTransfer != null)
+		{
+			evt.dataTransfer.dropEffect = 'move';
+		}
+
 		dropIndex = 0;
 		evt.stopPropagation();
 		evt.preventDefault();
@@ -5196,7 +5241,11 @@ var LayersWindow = function(editorUi, x, y, w, h)
 
 			mxEvent.addListener(ldiv, 'dragover', function(evt)
 			{
-				evt.dataTransfer.dropEffect = 'move';
+				if (evt.dataTransfer != null)
+				{
+					evt.dataTransfer.dropEffect = 'move';
+				}
+
 				dropIndex = index;
 				evt.stopPropagation();
 				evt.preventDefault();
@@ -5209,7 +5258,7 @@ var LayersWindow = function(editorUi, x, y, w, h)
 					dragSource = ldiv;
 					
 					// Workaround for no DnD on DIV in FF
-					if (mxClient.IS_FF)
+					if (mxClient.IS_FF && evt.dataTransfer != null)
 					{
 						// LATER: Check what triggers a parse as XML on this in FF after drop
 						evt.dataTransfer.setData('Text', '<layer/>');

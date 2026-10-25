@@ -1189,8 +1189,10 @@ mxCellRenderer.prototype.redrawLabel = function(state, forced)
 			state.text.apply(state);
 			this.configureShape(state);
 			
-			// Special case where value is obtained via hook in graph
+			// Special case where value is obtained via hook in graph, with the
+			// margin of the bounding box for the new value (see apply)
 			state.text.valign = graph.getVerticalAlign(state);
+			state.text.updateMargin();
 		}
 		
 		var bounds = this.getLabelBounds(state);
@@ -1266,6 +1268,7 @@ mxCellRenderer.prototype.isTextShapeInvalid = function(state, shape)
 		check('horizontal', mxConstants.STYLE_HORIZONTAL, true) ||
 		check('background', mxConstants.STYLE_LABEL_BACKGROUNDCOLOR) ||
 		check('border', mxConstants.STYLE_LABEL_BORDERCOLOR) ||
+		check('borderWidth', mxConstants.STYLE_LABEL_BORDER_WIDTH, 1) ||
 		check('opacity', mxConstants.STYLE_TEXT_OPACITY, 100) ||
 		check('textDirection', mxConstants.STYLE_TEXT_DIRECTION, mxConstants.DEFAULT_TEXT_DIRECTION);
 };
